@@ -16,7 +16,7 @@ class TestEnv():
         self.window_size = 512  # The size of the PyGame window
 
         self.foods = ["food_1"]
-        self.possible_agents = ["agent_1", "agent_2", "agent_3"]
+        self.possible_agents = ["agent_1", "agent_2"]
         # self.action_spaces = {k: spaces.Discrete(5) for k in self.possible_agents}
         self.action_space = spaces.Discrete(5)
 
@@ -54,11 +54,12 @@ class TestEnv():
         # check foods
         for v in self.food_locations.values():
             grid[str(v[0])+","+str(v[1])] = 2
-        observations = {k: grid for k in self.agent_locations}
+        observations = {k: copy(grid) for k in self.agent_locations}
         # position agents
         for k in self.agent_locations:
             observations[k]["x"] = self.agent_locations[k][0]
             observations[k]["y"] = self.agent_locations[k][1]
+
         return observations
 
     def reset(self):

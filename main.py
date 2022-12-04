@@ -49,7 +49,7 @@ class Agent():
             return self.model(torch.Tensor(list(state.values())))
 
 
-def q_learning(env, gamma=0.9, epsilon=0.3, eps_decay=0.999):
+def q_learning(env, gamma=0.9, epsilon=0.3, eps_decay=0.9999):
     """Deep Q Learning algorithm using the DQN. """
     state = env.reset()
     agents = {}
@@ -70,30 +70,26 @@ def q_learning(env, gamma=0.9, epsilon=0.3, eps_decay=0.999):
             actions[a] = action
 
         # Take action and add reward to total
-        render = i > 5000
+        render = i > 10000
         obs, rewards = env.step(actions, render)
 
         # every expected weighted action for every agent
         q_values_l = {k: agents[k].predict(state[k]).tolist() for k in obs}
 
-        if i % 100 == 0:
+        if i % 100 == 0 or i > 10000:
             print("step: " + str(i))
+            print("epsilon: " + str(epsilon))
             for a in actions:
                 print("agent: " + str(a) + ", action: " + str(actions[a]) + ", reward: " + str(rewards[a]))
                 print("qvals: " + str(q_values_l[a]))
+                # print("state: " + str(state[a]))
 
-        # if done:
-        #     q_values[action] = reward
-        #     # Update network weights
-        #     agents[agent].update(state, q_values)
-        #     deadAgents.append(agents[agent])
-        #     del agents[agent]
-        #     continue
-
-        # Update network weights using the last step only
+        # Update network weights
         q_values_next = {k: agents[k].predict(obs[k]) for k in obs}
         for a in q_values_l:
             q_values_l[a][action] = rewards[a] + gamma * torch.max(q_values_next[a]).item()
+            if i > 10000:
+                print("agent: " + str(a) + ", qval: " + str(q_values_l[a][action]))
             agents[a].update(state[a], q_values_l[a])
 
         state = obs
@@ -103,7 +99,7 @@ def q_learning(env, gamma=0.9, epsilon=0.3, eps_decay=0.999):
         # time.sleep(0.1)
 
 
-q_learning(env, gamma=.5, epsilon=0.3)
+q_learning(env, gamma=.8, epsilon=0.3)
 input()
 
 
