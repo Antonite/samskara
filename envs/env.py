@@ -8,10 +8,10 @@ from resources.colors import color_pallete
 
 _action_to_direction = {
     0: (np.array([0, 0]), "Stay"),
-    1: (np.array([1, 0]), "Up"),
+    1: (np.array([1, 0]), "Right"),
     2: (np.array([0, 1]), "Down"),
     3: (np.array([-1, 0]), "Left"),
-    4: (np.array([0, -1]), "Right")
+    4: (np.array([0, -1]), "Up")
 }
 
 
