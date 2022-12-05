@@ -16,7 +16,7 @@ class TestEnv():
         self.window_size = 512  # The size of the PyGame window
 
         self.foods = ["food_1"]
-        self.possible_agents = ["agent_1", "agent_2"]
+        self.possible_agents = ["agent_1", "agent_2", "agent_3"]
         # self.action_spaces = {k: spaces.Discrete(5) for k in self.possible_agents}
         self.action_space = spaces.Discrete(5)
 
