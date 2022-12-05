@@ -40,13 +40,16 @@ class Main:
             self.step = i
 
             agent_actions = {}
+            random_move = []
             for agent in self.agents:
                 # Epsilon percent chance to take a random movement decayed by eps_decay per step
                 if random.random() < self.epsilon:
                     action = env.action_space.sample()
+                    random_move.append(True)
                 else:
                     agent_qvals = self.agents[agent].predict(self.states[agent])
                     action = argmax(agent_qvals).item()
+                    random_move.append(False)
 
                 agent_actions[agent] = action
 
@@ -66,14 +69,15 @@ class Main:
                 agent_weights_last[agent][agent_actions[agent]] = rewards[agent] + self.gamma * max(agent_weights_next[agent]).item()
                 self.agents[agent].update(self.states[agent], agent_weights_last[agent])
 
-            self.print_step(agent_actions, agent_weights_last, rewards)
+            self.print_step(agent_actions, agent_weights_last, rewards, random_move)
             self.states = obs
 
-    def print_step(self, actions, weights, rewards):
+    def print_step(self, actions, weights, rewards, random_move):
         if self.step % 100 == 0 or self.step > 10000:
             print("Step: %s -- Epsilon %s" % (str(self.step), str(self.epsilon)))
-            for action in actions:
-                print(', '.join(["Agent: " + str(action), "Action: " + env.get_human_readable_action(actions[action]) + " - " + str(weights[action][actions[action]]),
+            for i, action in enumerate(actions):
+                print(', '.join(["Agent: " + str(action),
+                                 "Action: (" + ("R" if random_move[i] else "M") + ") " + env.get_human_readable_action(actions[action]) + " - " + str(weights[action][actions[action]]),
                                  "Reward " + str(rewards[action])]))
                 print("Last Action Weights: " + str(weights[action]))
             print(os.linesep)
