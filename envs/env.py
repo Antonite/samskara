@@ -1,5 +1,5 @@
 from copy import copy
-
+import random
 import numpy as np
 import pygame
 from gym import spaces
@@ -18,9 +18,9 @@ _action_to_direction = {
 class TestEnv:
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, render_mode=None, size=15):
+    def __init__(self, render_mode=None, size=10):
         self.size = size
-        self.window_size = 1024  # The size of the PyGame window
+        self.window_size = 768  # The size of the PyGame window
 
         self.agents = None
         self.agent_locations = None
@@ -77,7 +77,8 @@ class TestEnv:
     def reset(self):
         self.agents = self.possible_agents  # TODO {gufforda} - I dont think we need this
         self.agent_locations = {k: [0, 0] for k in self.agents}
-        self.food_locations = {k: [10, 10] for k in self.foods}
+        self.food_locations = {k: [random.randrange(
+            0, self.size - 1), random.randrange(0, self.size - 1)] for k in self.foods}
 
         return self._get_obs()
 
@@ -87,14 +88,28 @@ class TestEnv:
 
     def isOnFood(self, aloc):
         for f in self.food_locations:
-            return True if np.array_equal(aloc, self.food_locations[f]) else False
+            return (True, f) if np.array_equal(aloc, self.food_locations[f]) else (False, None)
 
     def step(self, actions, should_render):
         directions = {k: _action_to_direction[actions[k]][0] for k in actions}
         self.agent_locations = {k: np.clip(
             self.agent_locations[k] + directions[k], 0, self.size - 1) for k in directions}
+
+        reaches = {}
+        eaten = []
+        for a in directions:
+            reached, food = self.isOnFood(self.agent_locations[a])
+            reaches[a] = reached
+            if reached:
+                eaten.append(food)
+
         reaches = {k: self.isOnFood(self.agent_locations[k]) for k in directions}
         rewards = {k: self.size ** 2 if reaches[k] else 0 for k in reaches}
+
+        # move food if eaten
+        if len(eaten) > 0:
+            for f in eaten:
+                self.food_locations[f] = [random.randrange(0, self.size - 1), random.randrange(0, self.size - 1)]
 
         if self.render_mode == "human" and should_render:
             self._render_frame()

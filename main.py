@@ -9,8 +9,8 @@ from agent import Agent
 from torch import argmax
 from copy import copy
 
-size = 15
-env = TestEnv(render_mode="human", size=15)
+size = 10
+env = TestEnv(render_mode="human", size=size)
 
 # Number of states
 n_state = len(env.observation_space)
@@ -43,7 +43,7 @@ class Main:
         if qval > self._max_q_value:
             self._max_q_value = qval
 
-    def q_learning(self, replay_size=32):
+    def q_learning(self, replay_size=32, forceRender=False):
         ts = time.time()
         tt = time.time()
         self.renderThreshold = self.size ** 2 * 0.95 * 10
@@ -74,7 +74,7 @@ class Main:
                 self.epsilon = max(self.epsilon * self.eps_step_decay, 0.01)
 
             # take action and add reward to total
-            shouldRender = self.epsilon < 0.1
+            shouldRender = forceRender or self.epsilon < 0.1
             obs, rewards = env.step(agent_actions, shouldRender)
 
             # update memory
@@ -122,6 +122,6 @@ class Main:
 
 
 if __name__ == "__main__":
-    main = Main(gamma=0.9, epsilon=0.5, eps_step_decay=0.999, size=15)
-    main.q_learning(replay_size=512)
+    main = Main(gamma=0.9, epsilon=0.5, eps_step_decay=0.999, size=size)
+    main.q_learning(replay_size=512, forceRender=True)
     input()
