@@ -27,7 +27,7 @@ class TestEnv:
         self.food_locations = None
 
         self.foods = ["food_1"]
-        self.possible_agents = ["agent_1", "agent_2", "agent_3"]
+        self.possible_agents = ["agent_1", "agent_2"]
 
         # Up / Down / Left / Right / Stay
         self.action_space = spaces.Discrete(5)
@@ -103,7 +103,6 @@ class TestEnv:
             if reached:
                 eaten.append(food)
 
-        reaches = {k: self.isOnFood(self.agent_locations[k]) for k in directions}
         rewards = {k: self.size ** 2 if reaches[k] else 0 for k in reaches}
 
         # move food if eaten

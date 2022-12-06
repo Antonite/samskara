@@ -3,13 +3,13 @@ import random
 import sys
 import time
 import threading
-
+import numpy as np
 from envs.env import TestEnv
 from agent import Agent
 from torch import argmax
 from copy import copy
 
-size = 10
+size = 5
 env = TestEnv(render_mode="human", size=size)
 
 # Number of states
@@ -18,8 +18,16 @@ n_state = len(env.observation_space)
 n_action = env.action_space.n
 # Number of hidden nodes in the DQN
 n_hidden = round(n_state*2/3) + n_action
-# Learning rate
-lr = 0.001
+
+# Hyper params
+lr = 0.0001
+gamma = 0.9
+epsilon = 0.5
+eps_step_decay = 0.9999
+replay_size = 256
+
+# rendering
+maxStoredQVals = 3000
 
 
 class Main:
@@ -27,7 +35,7 @@ class Main:
         self.step = 0
         self.states = env.reset()
         self.agents = {}
-        self._max_q_value = 0
+        self._max_q_values = []
         self.size = size
 
         self.gamma = gamma
@@ -40,10 +48,11 @@ class Main:
 
     def replay(self, agent, memory, replay_size):
         qval = self.agents[agent].replay(memory, replay_size, self.gamma)
-        if qval > self._max_q_value:
-            self._max_q_value = qval
+        self._max_q_values.append(qval)
+        if len(self._max_q_values) > maxStoredQVals:
+            self._max_q_values.pop(0)
 
-    def q_learning(self, replay_size=32, forceRender=False):
+    def q_learning(self, replay_size=32, forceRender=False, dynamicRender=False):
         ts = time.time()
         tt = time.time()
         self.renderThreshold = self.size ** 2 * 0.95 * 10
@@ -70,11 +79,12 @@ class Main:
                 agent_actions[agent] = action
 
             # start learning decay if any agent learned something
-            if self._max_q_value > self.renderThreshold:
+            if len(self._max_q_values) >= maxStoredQVals and np.average(self._max_q_values) > self.renderThreshold:
                 self.epsilon = max(self.epsilon * self.eps_step_decay, 0.01)
 
             # take action and add reward to total
-            shouldRender = forceRender or self.epsilon < 0.1
+            shouldRender = self.step > 1000 and (forceRender or self.epsilon < 0.1 or
+                                                 (dynamicRender and round(self.step / 10)*10 % 5000 == 0))
             obs, rewards = env.step(agent_actions, shouldRender)
 
             # update memory
@@ -108,7 +118,7 @@ class Main:
         print("Step: %s -- Epsilon %s -- QVal %s/%s -- Batch %s -- Total %s" %
               (str(self.step),
                str("%.2f" % self.epsilon),
-               str("%.0f" % self._max_q_value),
+               str("%.0f" % np.average(self._max_q_values)),
                str("%.0f" % self.renderThreshold),
                str("%.1fs" % batchTime),
                str("%.1fs" % totalTime)))
@@ -122,6 +132,6 @@ class Main:
 
 
 if __name__ == "__main__":
-    main = Main(gamma=0.9, epsilon=0.5, eps_step_decay=0.999, size=size)
-    main.q_learning(replay_size=512, forceRender=True)
+    main = Main(gamma=gamma, epsilon=epsilon, eps_step_decay=eps_step_decay, size=size)
+    main.q_learning(replay_size=replay_size, forceRender=False, dynamicRender=True)
     input()
