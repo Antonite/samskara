@@ -4,13 +4,13 @@ import sys
 import time
 import threading
 import numpy as np
-from envs.env import ParallelEnv
+from envs.parallel import SequentialEnv
 from agent import Agent
 from torch import argmax
 from copy import copy
 
 size = 5
-env = ParallelEnv(render_mode="human", size=size)
+env = SequentialEnv(render_mode="human", size=size)
 
 # Number of states
 n_state = len(env.observation_space)
