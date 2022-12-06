@@ -20,8 +20,7 @@ lr = 0.001
 
 
 class Main:
-
-    def __init__(self, gamma, epsilon, eps_step_decay=0.9999, max_steps=sys.maxsize - 1):
+    def __init__(self, gamma, epsilon, eps_step_decay, max_steps=sys.maxsize - 1):
         self.step = 0
         self.states = env.reset()
         self.agents = {}
@@ -31,12 +30,11 @@ class Main:
         self.eps_step_decay = eps_step_decay
         self.max_steps = max_steps
 
-        print(max_steps)
-
         for env_state in self.states:
             self.agents[env_state] = Agent(env_state, n_state, n_action, n_hidden, lr)
 
-    def q_learning(self, render_at_step=1):
+    def q_learning(self, decay_at_reward=10):
+        maxReward = 0
         for i in range(self.max_steps):
             self.step = i
 
@@ -54,10 +52,12 @@ class Main:
 
                 agent_actions[agent] = action
 
-            self.epsilon = max(self.epsilon * self.eps_step_decay, 0.01)
+            # start learning decay if any agent learned something
+            if maxReward > decay_at_reward:
+                self.epsilon = max(self.epsilon * self.eps_step_decay, 0.01)
 
             # Take action and add reward to total
-            shouldRender = self.step > render_at_step
+            shouldRender = self.epsilon < 0.05
             obs, rewards = env.step(agent_actions, shouldRender)
 
             # every expected weighted action for every agent
@@ -67,33 +67,31 @@ class Main:
             agent_weights_next = {agent: self.agents[agent].predict(obs[agent]) for agent in obs}
 
             for agent in agent_weights_last:
-                agent_weights_last[agent][agent_actions[agent]] = rewards[agent] + self.gamma * max(agent_weights_next[agent]).item()
+                # update weights
+                expectedReward = rewards[agent] + self.gamma * max(agent_weights_next[agent]).item()
+                agent_weights_last[agent][agent_actions[agent]] = expectedReward
                 self.agents[agent].update(self.states[agent], agent_weights_last[agent])
+                # keep track of biggest reward for rendering
+                if expectedReward > maxReward:
+                    maxReward = expectedReward
 
-            self.print_step(agent_actions, agent_weights_last, rewards, random_move)
+            self.print_step(obs, agent_actions, agent_weights_last, rewards, random_move, shouldRender)
             self.states = obs
 
-    def print_step(self, actions, weights, rewards, random_move):
-        if self.step % 100 == 0 or self.step > 10000:
-            print("Step: %s -- Epsilon %s" % (str(self.step), str(self.epsilon)))
-            for i, action in enumerate(actions):
-                print(', '.join(["Agent: " + str(action),
-                                 "Action: (" + ("R" if random_move[i] else "M") + ") " + env.get_human_readable_action(actions[action]) + " - " + str(weights[action][actions[action]]),
-                                 "Reward " + str(rewards[action])]))
-                print("Last Action Weights: " + str(weights[action]))
+    def print_step(self, states, actions, weights, rewards, random_move, rendering):
+        if self.step % 1000 == 0 or rendering:
+            print("Step: %s -- Epsilon %s" % (str(self.step), str("%.2f" % self.epsilon)))
+            for move, agent in enumerate(actions):
+                print(', '.join(["Agent: " + str(agent),
+                                 "Pos: " + "[" + str(states[agent]["x"]) + "," + str(states[agent]["y"]) + "]",
+                                 "Action: (" + ("R" if random_move[move] else "M") + ") " + env.get_human_readable_action(
+                                     actions[agent]),
+                                 "Weight: " + str("%.2f" % weights[agent][actions[agent]]),
+                                 "Reward " + str(rewards[agent])]))
             print(os.linesep)
 
 
 if __name__ == "__main__":
-    main = Main(gamma=.8, epsilon=0.3)
-    main.q_learning(10000)
+    main = Main(gamma=0.9, epsilon=0.5, eps_step_decay=0.9999)
+    main.q_learning(decay_at_reward=1000)
     input()
-
-# for agent in env.agent_iter():
-#     observation, reward, termination, truncation, info = env.last()
-#     action = None if termination or truncation else env.action_space(
-#         agent).sample()
-#     env.step(action)
-#     print(agent)
-#     print(action)
-# simple_dqn = Agent(n_state, n_action, n_hidden, lr)

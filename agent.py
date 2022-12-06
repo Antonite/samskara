@@ -6,7 +6,7 @@ from torch.autograd import Variable
 class Agent:
     ''' Deep Q Neural Network Agent. '''
 
-    def __init__(self, agent_id, state_dim, action_dim, hidden_dim=32, agent_learn_rate=0.05):
+    def __init__(self, agent_id, state_dim, action_dim, hidden_dim=32, agent_learn_rate=0.001):
         print("Initializing Agent %s -- #States: %i -- #PotentialActions: %i" % (agent_id, state_dim, action_dim))
 
         self.criterion = torch.nn.MSELoss()

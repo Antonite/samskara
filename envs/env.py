@@ -18,9 +18,9 @@ _action_to_direction = {
 class TestEnv:
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, render_mode=None, size=5):
+    def __init__(self, render_mode=None, size=10):
         self.size = size
-        self.window_size = 512  # The size of the PyGame window
+        self.window_size = 1024  # The size of the PyGame window
 
         self.agents = None
         self.agent_locations = None
@@ -77,7 +77,7 @@ class TestEnv:
     def reset(self):
         self.agents = self.possible_agents  # TODO {gufforda} - I dont think we need this
         self.agent_locations = {k: [0, 0] for k in self.agents}
-        self.food_locations = {k: [2, 2] for k in self.foods}
+        self.food_locations = {k: [5, 5] for k in self.foods}
 
         return self._get_obs()
 
@@ -94,7 +94,7 @@ class TestEnv:
         self.agent_locations = {k: np.clip(
             self.agent_locations[k] + directions[k], 0, self.size - 1) for k in directions}
         reaches = {k: self.isOnFood(self.agent_locations[k]) for k in directions}
-        rewards = {k: 1 if reaches[k] else 0 for k in reaches}
+        rewards = {k: self.size ** 2 if reaches[k] else 0 for k in reaches}
 
         if self.render_mode == "human" and should_render:
             self._render_frame()
@@ -116,7 +116,7 @@ class TestEnv:
         canvas = pygame.Surface((self.window_size, self.window_size))
         canvas.fill((14, 17, 17))
         pix_square_size = (
-                self.window_size / self.size
+            self.window_size / self.size
         )  # The size of a single grid square in pixels
 
         # First we draw the foods
