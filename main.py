@@ -44,11 +44,14 @@ class Main:
             self._max_q_value = qval
 
     def q_learning(self, replay_size=32):
-        _max_q_value = 0
-        memory = []
         ts = time.time()
         tt = time.time()
         self.renderThreshold = self.size ** 2 * 0.95 * 10
+        # init memory per agent
+        memory = {}
+        for agent in self.agents:
+            memory[agent] = []
+
         for i in range(self.max_steps):
             self.step = i
 
@@ -78,27 +81,28 @@ class Main:
 
             # update memory
             for i in obs:
-                memory.append((copy(self.states[i]), copy(agent_actions[i]), copy(obs[i]), copy(rewards[i])))
-            if len(memory) > 10000:
-                memory = memory[:10000]
+                memory[i].append((copy(self.states[i]), copy(agent_actions[i]), copy(obs[i]), copy(rewards[i])))
+                if len(memory[i]) > 10000:
+                    memory[i].pop(0)
 
-            jobs = []
-            for agent in obs:
-                # Update network weights using replay memory
-                thread = threading.Thread(target=self.replay(agent, memory, replay_size))
-                jobs.append(thread)
+            if self.steps % replay_size == 0:
+                jobs = []
+                for agent in obs:
+                    # Update network weights using replay memory
+                    thread = threading.Thread(target=self.replay(agent, memory, replay_size))
+                    jobs.append(thread)
 
-            # Start the threads
-            for j in jobs:
-                j.start()
-            # Ensure all of the threads have finished
-            for j in jobs:
-                j.join()
+                # Start the threads
+                for j in jobs:
+                    j.start()
+                # Ensure all of the threads have finished
+                for j in jobs:
+                    j.join()
 
-            if self.step % 100 == 0 or shouldRender:
-                te = time.time()
-                self.print_step(obs, agent_actions, rewards, random_move, te-tt)
-                tt = te
+                if self.step % 100 == 0 or shouldRender:
+                    te = time.time()
+                    self.print_step(obs, agent_actions, rewards, random_move, te-tt)
+                    tt = te
 
             self.states = obs
 
