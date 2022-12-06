@@ -17,13 +17,27 @@ class Agent:
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_dim, action_dim)
         )
-        # move to GPU if cuda available
-        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device
-        self.model.to(self.device)
+
         self.optimizer = torch.optim.Adam(self.model.parameters(), agent_learn_rate)
+
+        try:
+            # move to GPU if cuda available
+            self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device
+            self.model.to(self.device)
+        except TypeError:
+            self.device = None
+            print("Unable to move model to cuda, continuing on cpu")
 
     def update(self, state, y):
         """Update the weights of the network given a training sample. """
+
+        if self.device:
+            y_pred = self.model(torch.Tensor(state).to(self.device))
+            loss = self.criterion(y_pred, Variable(torch.Tensor(y).to(self.device)))
+        else:
+            y_pred = self.model(torch.Tensor(state))
+            loss = self.criterion(y_pred, Variable(torch.Tensor(y)))
+
         y_pred = self.model(torch.Tensor(state).to(self.device))
         loss = self.criterion(y_pred, Variable(torch.Tensor(y).to(self.device)))
         self.optimizer.zero_grad()
@@ -33,7 +47,10 @@ class Agent:
     def predict(self, state):
         """ Compute Q values for all actions using the DQL. """
         with torch.no_grad():
-            return self.model(torch.Tensor(state).to(self.device))
+            if self.device:
+                return self.model(torch.Tensor(state).to(self.device))
+            else:
+                return self.model(torch.Tensor(state))
 
     def replay(self, memory, size, gamma=0.9):
         # Try to improve replay speed

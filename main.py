@@ -76,33 +76,33 @@ class Main:
             # take action and add reward to total
             shouldRender = self.epsilon < 0.1
             if shouldRender:
-                print("%.0fs" % time.time() - ts)
+                print("%.0fs" % (time.time() - ts))
             obs, rewards = env.step(agent_actions, shouldRender)
 
             # update memory
             for i in obs:
                 memory[i].append((copy(self.states[i]), copy(agent_actions[i]), copy(obs[i]), copy(rewards[i])))
-                if len(memory[i]) > 10000:
-                    memory[i].pop(0)
 
-            if self.steps % replay_size == 0:
-                jobs = []
-                for agent in obs:
-                    # Update network weights using replay memory
-                    thread = threading.Thread(target=self.replay(agent, memory, replay_size))
-                    jobs.append(thread)
+            # if self.step % replay_size == 0:
+            jobs = []
+            for agent in obs:
+                # Update network weights using replay memory
+                if len(memory[agent]) > 1500:
+                    memory[agent] = memory[agent][len(memory)-1500:]
+                thread = threading.Thread(target=self.replay(agent, memory[agent], replay_size))
+                jobs.append(thread)
 
-                # Start the threads
-                for j in jobs:
-                    j.start()
-                # Ensure all of the threads have finished
-                for j in jobs:
-                    j.join()
+            # Start the threads
+            for j in jobs:
+                j.start()
+            # Ensure all of the threads have finished
+            for j in jobs:
+                j.join()
 
-                if self.step % 100 == 0 or shouldRender:
-                    te = time.time()
-                    self.print_step(obs, agent_actions, rewards, random_move, te-tt)
-                    tt = te
+            if self.step % replay_size == 0:
+                te = time.time()
+                self.print_step(obs, agent_actions, rewards, random_move, te-tt)
+                tt = te
 
             self.states = obs
 
@@ -119,6 +119,6 @@ class Main:
 
 
 if __name__ == "__main__":
-    main = Main(gamma=0.9, epsilon=0.5, eps_step_decay=0.99, size=15)
+    main = Main(gamma=0.9, epsilon=0.5, eps_step_decay=0.9999, size=15)
     main.q_learning(replay_size=512)
     input()
