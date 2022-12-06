@@ -75,20 +75,18 @@ class Main:
 
             # take action and add reward to total
             shouldRender = self.epsilon < 0.1
-            if shouldRender:
-                print("%.0fs" % (time.time() - ts))
             obs, rewards = env.step(agent_actions, shouldRender)
 
             # update memory
             for i in obs:
                 memory[i].append((copy(self.states[i]), copy(agent_actions[i]), copy(obs[i]), copy(rewards[i])))
 
-            # if self.step % replay_size == 0:
             jobs = []
             for agent in obs:
-                # Update network weights using replay memory
+                # trim memory
                 if len(memory[agent]) > 1500:
                     memory[agent] = memory[agent][len(memory)-1500:]
+                # Update network weights using replay memory
                 thread = threading.Thread(target=self.replay(agent, memory[agent], replay_size))
                 jobs.append(thread)
 
@@ -101,14 +99,19 @@ class Main:
 
             if self.step % replay_size == 0:
                 te = time.time()
-                self.print_step(obs, agent_actions, rewards, random_move, te-tt)
+                self.print_step(obs, agent_actions, rewards, random_move, te-tt, te-ts)
                 tt = te
 
             self.states = obs
 
-    def print_step(self, states, actions, rewards, random_move, batchTime):
-        print("Step: %s -- Epsilon %s -- QVal %s/%s -- Time %s" %
-              (str(self.step), str("%.2f" % self.epsilon), str("%.0f" % self._max_q_value), str("%.0f" % self.renderThreshold), str("%.1fs" % batchTime)))
+    def print_step(self, states, actions, rewards, random_move, batchTime, totalTime):
+        print("Step: %s -- Epsilon %s -- QVal %s/%s -- Batch %s -- Total %s" %
+              (str(self.step),
+               str("%.2f" % self.epsilon),
+               str("%.0f" % self._max_q_value),
+               str("%.0f" % self.renderThreshold),
+               str("%.1fs" % batchTime),
+               str("%.1fs" % totalTime)))
         for move, agent in enumerate(actions):
             print(', '.join(["Agent: " + str(agent),
                              "Pos: " + "[" + str(states[agent]["x"]) + "," + str(states[agent]["y"]) + "]",
@@ -119,6 +122,6 @@ class Main:
 
 
 if __name__ == "__main__":
-    main = Main(gamma=0.9, epsilon=0.5, eps_step_decay=0.9999, size=15)
+    main = Main(gamma=0.9, epsilon=0.5, eps_step_decay=0.999, size=15)
     main.q_learning(replay_size=512)
     input()
