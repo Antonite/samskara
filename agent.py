@@ -13,9 +13,9 @@ class Agent:
         self.model = torch.nn.Sequential(
             torch.nn.Linear(state_dim, hidden_dim),
             torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_dim, hidden_dim * 2),
+            torch.nn.Linear(hidden_dim, hidden_dim),
             torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_dim * 2, action_dim)
+            torch.nn.Linear(hidden_dim, action_dim)
         )
         self.optimizer = torch.optim.Adam(self.model.parameters(), agent_learn_rate)
 

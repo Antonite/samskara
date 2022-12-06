@@ -18,7 +18,7 @@ _action_to_direction = {
 class TestEnv:
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, render_mode=None, size=10):
+    def __init__(self, render_mode=None, size=15):
         self.size = size
         self.window_size = 1024  # The size of the PyGame window
 
@@ -27,7 +27,7 @@ class TestEnv:
         self.food_locations = None
 
         self.foods = ["food_1"]
-        self.possible_agents = ["agent_1", "agent_2"]
+        self.possible_agents = ["agent_1", "agent_2", "agent_3"]
 
         # Up / Down / Left / Right / Stay
         self.action_space = spaces.Discrete(5)
@@ -77,7 +77,7 @@ class TestEnv:
     def reset(self):
         self.agents = self.possible_agents  # TODO {gufforda} - I dont think we need this
         self.agent_locations = {k: [0, 0] for k in self.agents}
-        self.food_locations = {k: [5, 5] for k in self.foods}
+        self.food_locations = {k: [10, 10] for k in self.foods}
 
         return self._get_obs()
 

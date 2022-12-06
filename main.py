@@ -7,14 +7,15 @@ from envs.env import TestEnv
 from agent import Agent
 from torch import argmax
 
-env = TestEnv(render_mode="human")
+size = 15
+env = TestEnv(render_mode="human", size=15)
 
 # Number of states
 n_state = len(env.observation_space)
 # Number of actions
 n_action = env.action_space.n
 # Number of hidden nodes in the DQN
-n_hidden = 32
+n_hidden = round(n_state*2/3) + n_action
 # Learning rate
 lr = 0.001
 
@@ -33,7 +34,7 @@ class Main:
         for env_state in self.states:
             self.agents[env_state] = Agent(env_state, n_state, n_action, n_hidden, lr)
 
-    def q_learning(self, decay_at_reward=10):
+    def q_learning(self):
         maxReward = 0
         for i in range(self.max_steps):
             self.step = i
@@ -53,7 +54,7 @@ class Main:
                 agent_actions[agent] = action
 
             # start learning decay if any agent learned something
-            if maxReward > decay_at_reward:
+            if maxReward > size ** 2 * 0.95 * 10:
                 self.epsilon = max(self.epsilon * self.eps_step_decay, 0.01)
 
             # Take action and add reward to total
@@ -93,5 +94,5 @@ class Main:
 
 if __name__ == "__main__":
     main = Main(gamma=0.9, epsilon=0.5, eps_step_decay=0.9999)
-    main.q_learning(decay_at_reward=1000)
+    main.q_learning()
     input()
