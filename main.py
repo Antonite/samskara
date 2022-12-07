@@ -4,20 +4,20 @@ import sys
 import time
 import threading
 import numpy as np
-from envs.parallel import SequentialEnv
+import torch
+from envs.sequential import SequentialEnv
 from agent import Agent
-from torch import argmax
 from copy import copy
 
 size = 5
 env = SequentialEnv(render_mode="human", size=size)
 
 # Number of states
-n_state = len(env.observation_space)
+n_inputs = env.inputs
 # Number of actions
-n_action = env.action_space.n
+n_outputs = env.action_space.n
 # Number of hidden nodes in the DQN
-n_hidden = round(n_state*2/3) + n_action
+n_hidden = round(n_inputs*2/3) + n_outputs
 
 # Hyper params
 lr = 0.0001
@@ -32,8 +32,9 @@ maxStoredQVals = 3000
 
 class Main:
     def __init__(self, gamma, epsilon, eps_step_decay, size, max_steps=sys.maxsize - 1):
+        env.reset()
+
         self.step = 0
-        self.states = env.reset()
         self.agents = {}
         self._max_q_values = []
         self.size = size
@@ -43,8 +44,8 @@ class Main:
         self.eps_step_decay = eps_step_decay
         self.max_steps = max_steps
 
-        for env_state in self.states:
-            self.agents[env_state] = Agent(env_state, n_state, n_action, n_hidden, lr)
+        for agent in env.agents:
+            self.agents[agent] = Agent(agent, n_inputs, n_outputs, n_hidden, lr)
 
     def replay(self, agent, memory, replay_size):
         qval = self.agents[agent].replay(memory, replay_size, self.gamma)
@@ -64,35 +65,38 @@ class Main:
         for i in range(self.max_steps):
             self.step = i
 
-            agent_actions = {}
-            random_move = []
+            # conditional rendering
+            shouldRender = self.step > 1000 and (forceRender or (
+                dynamicRender and round(self.step / 10)*10 % 5000 == 0))
+
+            # step
             for agent in self.agents:
+                state = env.state(agent)
+                mask = env.action_mask(agent)
                 # Epsilon percent chance to take a random movement decayed by eps_decay per step
                 if random.random() < self.epsilon:
-                    action = env.action_space.sample()
-                    random_move.append(True)
+                    pActs = []
+                    for i, v in enumerate(mask):
+                        if v == 1:
+                            pActs.append(i)
+                    action = pActs[random.randrange(0, len(pActs))]
                 else:
-                    agent_qvals = self.agents[agent].predict(list(self.states[agent].values()))
-                    action = argmax(agent_qvals).item()
-                    random_move.append(False)
+                    agent_qvals = self.agents[agent].predict(state)
+                    maxq = None
+                    for i, q in enumerate(agent_qvals):
+                        if mask[i] == 1 and (maxq == None or q > maxq):
+                            maxq = q
+                            action = i
 
-                agent_actions[agent] = action
+                # take action and add reward to total
+                obs, reward = env.step(agent, action, shouldRender)
 
-            # start learning decay if any agent learned something
-            if len(self._max_q_values) >= maxStoredQVals and np.average(self._max_q_values) > self.renderThreshold:
-                self.epsilon = max(self.epsilon * self.eps_step_decay, 0.01)
+                # update memory
+                memory[agent].append((state, action, obs, reward))
 
-            # take action and add reward to total
-            shouldRender = self.step > 1000 and (forceRender or self.epsilon < 0.1 or
-                                                 (dynamicRender and round(self.step / 10)*10 % 5000 == 0))
-            obs, rewards = env.step(agent_actions, shouldRender)
-
-            # update memory
-            for i in obs:
-                memory[i].append((copy(self.states[i]), copy(agent_actions[i]), copy(obs[i]), copy(rewards[i])))
-
+            # learn
             jobs = []
-            for agent in obs:
+            for agent in self.agents:
                 # trim memory
                 if len(memory[agent]) > 1500:
                     memory[agent] = memory[agent][len(memory)-1500:]
@@ -109,26 +113,17 @@ class Main:
 
             if self.step % replay_size == 0:
                 te = time.time()
-                self.print_step(obs, agent_actions, rewards, random_move, te-tt, te-ts)
+                self.print_step(te-tt, te-ts)
                 tt = te
 
-            self.states = obs
-
-    def print_step(self, states, actions, rewards, random_move, batchTime, totalTime):
+    def print_step(self, batchTime, totalTime):
         print("Step: %s -- Epsilon %s -- QVal %s/%s -- Batch %s -- Total %s" %
               (str(self.step),
                str("%.2f" % self.epsilon),
-               str("%.0f" % np.average(self._max_q_values)),
+               str("%.0f" % max(self._max_q_values)),
                str("%.0f" % self.renderThreshold),
                str("%.1fs" % batchTime),
                str("%.1fs" % totalTime)))
-        for move, agent in enumerate(actions):
-            print(', '.join(["Agent: " + str(agent),
-                             "Pos: " + "[" + str(states[agent]["x"]) + "," + str(states[agent]["y"]) + "]",
-                             "Action: (" + ("R" if random_move[move] else "M") + ") " + env.get_human_readable_action(
-                actions[agent]),
-                "Reward: " + str(rewards[agent])]))
-        print(os.linesep)
 
 
 if __name__ == "__main__":

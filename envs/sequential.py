@@ -3,117 +3,155 @@ import random
 import numpy as np
 import pygame
 from gym import spaces
+import torch
 
 from resources.colors import color_pallete
 
+
+EMPTY_TILE = 0
+AGENT_TILE = 1
+FOOD_TILE = 2
+
+
+ACTION_DOWN = 0
+ACTION_UP = 1
+ACTION_LEFT = 2
+ACTION_RIGHT = 3
+
+ACTION_STAY = 4
+ACTION_GATHER = 5
+
+MOVE_ACTIONS = [ACTION_DOWN, ACTION_UP, ACTION_LEFT, ACTION_RIGHT]
+ALL_ACTIONS = [ACTION_DOWN, ACTION_UP, ACTION_LEFT, ACTION_RIGHT, ACTION_STAY, ACTION_GATHER]
+
 _action_to_direction = {
-    0: (np.array([0, 0]), "Stay"),
-    1: (np.array([1, 0]), "Right"),
-    2: (np.array([0, 1]), "Down"),
-    3: (np.array([-1, 0]), "Left"),
-    4: (np.array([0, -1]), "Up")
+    ACTION_DOWN: (np.array([0, 1]), "Down"),
+    ACTION_UP: (np.array([0, -1]), "Up"),
+    ACTION_LEFT: (np.array([-1, 0]), "Left"),
+    ACTION_RIGHT: (np.array([1, 0]), "Right"),
+    ACTION_STAY: (np.array([0, 0]), "Stay"),
+    ACTION_GATHER: (np.array([0, 0]), "Gather")
 }
 
 
 class SequentialEnv:
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, render_mode=None, size=10):
+    def __init__(self, size, render_mode=None):
+        # move to GPU if cuda available
         self.size = size
         self.window_size = 768  # The size of the PyGame window
 
-        self.agents = None
-        self.agent_locations = None
-        self.food_locations = None
+        self.reward_scaler = 1
 
-        self.foods = ["food_1"]
+        self.agents = None
+        self.foods = None
+        self.world = np.zeros((size, size))
+
+        self.possible_foods = ["food_1"]
         self.possible_agents = ["agent_1", "agent_2"]
 
+        self.agent_locations = {}
+        self.food_locations = {}
+
         # Up / Down / Left / Right / Stay
-        self.action_space = spaces.Discrete(5)
-
+        self.action_space = spaces.Discrete(len(ALL_ACTIONS))
         # every location
-        self.observation_space = {k: spaces.Discrete(3) for k in self._all_locs()}
-        # agents current location on the board
-        self.observation_space["x"] = spaces.Discrete(1)
-        self.observation_space["y"] = spaces.Discrete(1)
+        self.inputs = len(self.world.flatten()) + 2
 
+        # rendering
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
         self.window = None
         self.clock = None
 
-    def _all_locs(self):
-        # every location
-        locKeys = []
-        for i in range(self.size):
-            for j in range(self.size):
-                locKeys.append(','.join([str(i), str(j)]))
-        return locKeys
+    def state(self, agent):
+        return np.append(self.world.flatten(), self.agent_locations[agent])
 
-    """ Returns the 'observable state of the board via a map of (X,Y) coordinates to the following
-                (1): Location is occupied
-                (2): Location occupied by Reward
-        as well as the current location of the agent
-    """
+    def _get_empty_location(self):
+        # first try a random location a few times
+        for i in range(5):
+            r = random.randrange(0, self.size - 1)
+            c = random.randrange(0, self.size - 1)
+            if self.world[r][c] == 0:
+                return [r, c]
 
-    def _get_obs(self):
-        # K: (X,Y) - V: 0 All board locations
-        grid = {k: 0 for k in self._all_locs()}
-        # Encode agent locations
-        for v in self.agent_locations.values():
-            grid[str(v[0]) + "," + str(v[1])] = 1
-        # Encode food locations
-        for v in self.food_locations.values():
-            grid[str(v[0]) + "," + str(v[1])] = 2
-        observations = {k: copy(grid) for k in self.agent_locations}
-        # Encode agents current position
-        for k in self.agent_locations:
-            observations[k]["x"] = self.agent_locations[k][0]
-            observations[k]["y"] = self.agent_locations[k][1]
+        # find first empty slot
+        for ir, r in enumerate(self.world):
+            for ic, c in enumerate(r):
+                if c == 0:
+                    return [ir, ic]
+        return None
 
-        return observations
+    def action_mask(self, agent):
+        mask = np.ones(self.action_space.n)
+        mask[ACTION_GATHER] = 0
+        nearbyFood = []
+        for act in MOVE_ACTIONS:
+            newl = np.clip(self.agent_locations[agent] + _action_to_direction[act][0], 0, self.size - 1)
+            # move outside boundry
+            if np.array_equal(newl, self.agent_locations[agent]):
+                mask[act] = 0
+            # that tile isn't empty
+            elif self.world[newl[0]][newl[1]] != EMPTY_TILE:
+                mask[act] = 0
+                # tile has food
+                if self.world[newl[0]][newl[1]] == FOOD_TILE:
+                    mask[ACTION_GATHER] = 1
+                    nearbyFood.append(newl)
+        return mask
+
+    def _nearby_food(self, agent):
+        nearbyFood = []
+        for act in MOVE_ACTIONS:
+            newl = np.clip(self.agent_locations[agent] + _action_to_direction[act][0], 0, self.size - 1)
+            if self.world[newl[0]][newl[1]] == FOOD_TILE:
+                nearbyFood.append(newl)
+        eaten = []
+        for floc in nearbyFood:
+            for f in self.food_locations:
+                if np.array_equal(floc, self.food_locations[f]):
+                    eaten.append(f)
+
+        return eaten
 
     def reset(self):
-        self.agents = self.possible_agents  # TODO {gufforda} - I dont think we need this
-        self.agent_locations = {k: [0, 0] for k in self.agents}
-        self.food_locations = {k: [random.randrange(
-            0, self.size - 1), random.randrange(0, self.size - 1)] for k in self.foods}
+        self.agents = self.possible_agents
+        self.foods = self.possible_foods
+        # place foods
+        for food in self.foods:
+            empty = self._get_empty_location()
+            self.food_locations[food] = empty
+            self.world[empty[0]][empty[1]] = FOOD_TILE
+        # place agents
+        for agent in self.agents:
+            empty = self._get_empty_location()
+            self.agent_locations[agent] = empty
+            self.world[empty[0]][empty[1]] = AGENT_TILE
 
-        return self._get_obs()
-
-    @staticmethod
-    def get_human_readable_action(action):
-        return _action_to_direction[action][1]
-
-    def isOnFood(self, aloc):
-        for f in self.food_locations:
-            return (True, f) if np.array_equal(aloc, self.food_locations[f]) else (False, None)
-
-    def step(self, actions, should_render):
-        directions = {k: _action_to_direction[actions[k]][0] for k in actions}
-        self.agent_locations = {k: np.clip(
-            self.agent_locations[k] + directions[k], 0, self.size - 1) for k in directions}
-
-        reaches = {}
-        eaten = []
-        for a in directions:
-            reached, food = self.isOnFood(self.agent_locations[a])
-            reaches[a] = reached
-            if reached:
-                eaten.append(food)
-
-        rewards = {k: self.size ** 2 if reaches[k] else 0 for k in reaches}
-
-        # move food if eaten
-        if len(eaten) > 0:
+    def step(self, agent, action, should_render):
+        reward = 0
+        if action == ACTION_GATHER:
+            eaten = self._nearby_food(agent)
+            reward = len(eaten) * self.reward_scaler
             for f in eaten:
-                self.food_locations[f] = [random.randrange(0, self.size - 1), random.randrange(0, self.size - 1)]
+                newl = self._get_empty_location()
+                self.world[self.food_locations[f][0]][self.food_locations[f][1]] = EMPTY_TILE
+                self.food_locations[f] = newl
+                self.world[newl[0]][newl[1]] = FOOD_TILE
+        else:
+            self.world[self.agent_locations[agent][0]][self.agent_locations[agent][1]] = EMPTY_TILE
+            self.agent_locations[agent] = self.agent_locations[agent] + _action_to_direction[action][0]
+            self.world[self.agent_locations[agent][0]][self.agent_locations[agent][1]] = AGENT_TILE
 
         if self.render_mode == "human" and should_render:
             self._render_frame()
 
-        return self._get_obs(), rewards
+        return self.state(agent), reward
+
+    @staticmethod
+    def get_human_readable_action(action):
+        return _action_to_direction[action][1]
 
     def render(self):
         if self.render_mode == "rgb_array":

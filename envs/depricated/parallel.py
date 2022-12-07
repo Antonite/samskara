@@ -14,6 +14,8 @@ _action_to_direction = {
     4: (np.array([0, -1]), "Up")
 }
 
+# DEPRICATED
+
 
 class ParallelEnv:
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
