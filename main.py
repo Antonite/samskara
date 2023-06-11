@@ -7,6 +7,7 @@ import torch.optim as optim
 import time
 from collections import deque
 from custom_env import CustomEnv
+import pygame
 
 # Step 1: Set the device to CUDA if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -38,26 +39,23 @@ models = []
 target_models = []
 replay_buffers = []
 for i in range(env.num_agents):
-    # model = QNetwork(num_states, num_actions)
-    # target_model = QNetwork(num_states, num_actions)
-    # target_model.load_state_dict(model.state_dict())
-    # target_model.eval()
-    # replay_buffer = deque(maxlen=10000)
-
     model = QNetwork(num_states, num_actions)
-    model.load_state_dict(torch.load("model"+str(i)+".pth"))
-    model.eval()
     target_model = QNetwork(num_states, num_actions)
-    target_model.load_state_dict(torch.load("target_model"+str(i)+".pth"))
+    target_model.load_state_dict(model.state_dict())
     target_model.eval()
-    replay_buffer = torch.load("replay_buffer"+str(i)+".pth")
+    replay_buffer = deque(maxlen=10000)
+
+    # model = QNetwork(num_states, num_actions)
+    # model.load_state_dict(torch.load("model"+str(i)+".pth"))
+    # model.eval()
+    # target_model = QNetwork(num_states, num_actions)
+    # target_model.load_state_dict(torch.load("target_model"+str(i)+".pth"))
+    # target_model.eval()
+    # replay_buffer = torch.load("replay_buffer"+str(i)+".pth")
 
     replay_buffers.append(replay_buffer)
     models.append(model)
     target_models.append(target_model)
-
-
-
 
 
 
@@ -90,7 +88,7 @@ for episode in range(num_episodes):
                 action = env.action_space.sample()
 
 
-            env.active_agent = i
+            env.set_active_agent(i)
             new_state, reward, _, _ = env.step(action)
 
             # Store the experience in the replay buffer
@@ -138,10 +136,10 @@ for episode in range(num_episodes):
     print(f"Episode {episode + 1}: Total Rewards = {total_rewards}")
 
 
-# for i in range(env.num_agents):
-#     torch.save(models[i].state_dict(), "model"+str(i)+".pth")
-#     torch.save(target_models[i].state_dict(), "target_model"+str(i)+".pth")
-#     torch.save(replay_buffers[i], "replay_buffer"+str(i)+".pth")
+for i in range(env.num_agents):
+    torch.save(models[i].state_dict(), "model"+str(i)+".pth")
+    torch.save(target_models[i].state_dict(), "target_model"+str(i)+".pth")
+    torch.save(replay_buffers[i], "replay_buffer"+str(i)+".pth")
 
 # After training, you can test the agents' performance
 state = env.reset()
@@ -150,12 +148,14 @@ total_rewards = [0.0] * env.num_agents
 env.render()
 while not done:
     for i in range(env.num_agents):
-        action = torch.argmax(models[i](torch.cat(state))).item()
+        env.set_active_agent(i)
+        # action = torch.argmax(models[i](torch.cat(state))).item()
+        action = env.action_space.sample()
         state, reward, done, _ = env.step(action)
-        print("Agent: ", i, " Action: ", action, " Reward: ", reward)
         total_rewards[i] += reward
+        pygame.event.pump()
         env.render()
-        time.sleep(0.1)
+    
 
 # Print the total rewards achieved in the test episode
 print(f"Test Episode: Total Rewards = {total_rewards}")

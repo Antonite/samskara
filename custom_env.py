@@ -139,10 +139,10 @@ class CustomEnv(gym.Env):
             pygame.draw.circle(self.window, (colorr,colorg,colorb), ((agent_pos[0]+0.5)*cell_size,(agent_pos[1]+0.5)*cell_size), cell_size / 3)
 
         # Draw reward position
-        pygame.draw.rect(self.window, (0, 255, 0), (self.reward_pos[1] * cell_size, self.reward_pos[0] * cell_size, cell_size, cell_size))
+        pygame.draw.rect(self.window, (0, 255, 0), (self.reward_pos[0] * cell_size, self.reward_pos[1] * cell_size, cell_size, cell_size))
 
         pygame.display.flip()
-        # self.clock.tick(4)
+        self.clock.tick(4)
 
     def close(self):
         if self.window is not None:
@@ -158,6 +158,9 @@ class CustomEnv(gym.Env):
         state[self.reward_pos[0], self.reward_pos[1]] = -1
         state = [torch.Tensor(row) for row in state]
         return state
+    
+    def set_active_agent(self, agent):
+        self.active_agent = agent
 
 
 # Register the environment with Gym
