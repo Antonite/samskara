@@ -3,7 +3,7 @@ from gym import spaces
 import numpy as np
 import pygame
 
-color_pallete = (
+color_palette = (
     (240, 163, 255),
     (0, 117, 220),
     (153, 63, 0),
@@ -33,11 +33,14 @@ color_pallete = (
 )
 
 class CustomEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, num_agents=1):
         super(CustomEnv, self).__init__()
 
         # Define the dimensions of the grid
         self.grid_size = 5
+
+        # Number of agents
+        self.num_agents = num_agents
 
         # Render
         self.window_size = 768
@@ -47,131 +50,95 @@ class CustomEnv(gym.Env):
         # Define the possible actions (left, right, up, down, stay)
         self.action_space = spaces.Discrete(5)
 
-        # Define the observation space (grid size)
-        self.observation_space = spaces.Box(
-            low=0, high=1, shape=(self.grid_size, self.grid_size), dtype=np.float32
-        )
+        # Define the observation space (grid size + agent positions)
+        low = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
+        high = np.ones((self.grid_size, self.grid_size), dtype=np.float32)
+        self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
         # Initialize the agent and reward positions
-        self.agent_pos = (0, 0)
+        self.agent_positions = [(0, 0)] * self.num_agents
         self.reward_pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
+        self.reward_available = True
 
-    def step(self, action):
-        # Update the agent's position based on the chosen action
-        if action == 0:  # left
-            self.agent_pos = (self.agent_pos[0], max(0, self.agent_pos[1] - 1))
-        elif action == 1:  # right
-            self.agent_pos = (self.agent_pos[0], min(self.grid_size - 1, self.agent_pos[1] + 1))
-        elif action == 2:  # up
-            self.agent_pos = (max(0, self.agent_pos[0] - 1), self.agent_pos[1])
-        elif action == 3:  # down
-            self.agent_pos = (min(self.grid_size - 1, self.agent_pos[0] + 1), self.agent_pos[1])
-        elif action == 4:  # stay
-            pass
-
-        # Check if the agent has reached the reward tile
-        if self.agent_pos == self.reward_pos:
-            # Calculate the reward
-            reward = 1.0
-
-            # Move the reward tile to a random position
-            self.reward_pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
-        else:
-            reward = 0.0
-
-        # Define whether the episode is done
+    def step(self, actions):
+        rewards = [0.0] * self.num_agents
         done = False
 
-        # Return the updated observation, reward, done flag, and additional information (optional)
-        return self._get_observation(), reward, done, {}
+        # Update the agent positions based on the chosen actions
+        for i in range(self.num_agents):
+            action = actions[i]
 
+            if action == 0:  # left
+                self.agent_positions[i] = (self.agent_positions[i][0], max(0, self.agent_positions[i][1] - 1))
+            elif action == 1:  # right
+                self.agent_positions[i] = (self.agent_positions[i][0], min(self.grid_size - 1, self.agent_positions[i][1] + 1))
+            elif action == 2:  # up
+                self.agent_positions[i] = (max(0, self.agent_positions[i][0] - 1), self.agent_positions[i][1])
+            elif action == 3:  # down
+                self.agent_positions[i] = (min(self.grid_size - 1, self.agent_positions[i][0] + 1), self.agent_positions[i][1])
+
+        # Check if any agent reached the reward position
+        for i in range(self.num_agents):
+            if self.agent_positions[i] == self.reward_pos:
+                if self.reward_available:
+                    rewards[i] = 1.0
+                    self.reward_available = False
+
+        # Check if all agents reached the reward or the maximum number of steps is reached
+        if not self.reward_available or np.sum(rewards) == self.num_agents or np.sum(rewards) > 0.0:
+            done = True
+
+        return self.get_state(), rewards, done, {}
 
     def reset(self):
-        # Reset the agent's position
-        self.agent_pos = (0, 0)
-
-        # Move the reward tile to a random position
+        # Reset the agent and reward positions
+        self.agent_positions = [(0, 0)] * self.num_agents
         self.reward_pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
+        self.reward_available = True
 
-        # Return the initial observation
-        return self._get_observation()
+        return self.get_state()
 
-
-    def render(self, mode='human'):
-        # grid = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
-        # grid[self.agent_pos] = 0.5
-        # grid[self.reward_pos] = 1.0
-
-        # print(grid)
-
+    def render(self):
         if self.window is None:
             pygame.init()
-            pygame.display.init()
             self.window = pygame.display.set_mode((self.window_size, self.window_size))
-        if self.clock is None:
+            pygame.display.set_caption("CustomEnv")
             self.clock = pygame.time.Clock()
 
-        canvas = pygame.Surface((self.window_size, self.window_size))
-        canvas.fill((14, 17, 17))
-        pix_square_size = self.window_size / self.grid_size  # The size of a single grid square in pixels
+        self.window.fill((255, 255, 255))
 
-        loc = [p * pix_square_size for p in self.reward_pos]
-        pygame.draw.rect(
-            canvas,
-            (0, 255, 0),
-            pygame.Rect(
-                loc,
-                (pix_square_size, pix_square_size),
-            ))
+        cell_size = self.window_size // self.grid_size
 
-        # for i, a in enumerate(self.agent_locations.values()):
-        colorOffset = 1 % len(color_pallete)
-        color_tuple = color_pallete[colorOffset]
-        colorr = color_tuple[0]
-        colorg = color_tuple[1]
-        colorb = color_tuple[2]
-        loc = [(p + 0.5) * pix_square_size for p in self.agent_pos]
-        pygame.draw.circle(
-            canvas,
-            (colorr, colorg, colorb),
-            loc,
-            pix_square_size / 3,
-            )
+        # Draw grid lines
+        for x in range(0, self.window_size, cell_size):
+            pygame.draw.line(self.window, (0, 0, 0), (x, 0), (x, self.window_size))
+        for y in range(0, self.window_size, cell_size):
+            pygame.draw.line(self.window, (0, 0, 0), (0, y), (self.window_size, y))
 
-        # Finally, add some gridlines
-        for x in range(self.grid_size + 1):
-            pygame.draw.line(
-                canvas,
-                (90, 90, 90),
-                (0, pix_square_size * x),
-                (self.window_size, pix_square_size * x),
-                width=3,
-            )
-            pygame.draw.line(
-                canvas,
-                (90, 90, 90),
-                (pix_square_size * x, 0),
-                (pix_square_size * x, self.window_size),
-                width=3,
-            )
+        # Draw agent positions
+        for i in range(self.num_agents):
+            agent_pos = self.agent_positions[i]
+            pygame.draw.rect(self.window, color_palette[i], (agent_pos[1] * cell_size, agent_pos[0] * cell_size, cell_size, cell_size))
 
-        # The following line copies our drawings from `canvas` to the visible window
-        self.window.blit(canvas, canvas.get_rect())
-        pygame.event.pump()
-        pygame.display.update()
+        # Draw reward position
+        pygame.draw.rect(self.window, (255, 0, 0), (self.reward_pos[1] * cell_size, self.reward_pos[0] * cell_size, cell_size, cell_size))
 
-        # We need to ensure that human-rendering occurs at the predefined framerate.
-        # The following line will automatically add a delay to keep the framerate stable.
+        pygame.display.flip()
         self.clock.tick(10)
 
-        
+    def close(self):
+        if self.window is not None:
+            pygame.quit()
 
-    def _get_observation(self):
-        grid = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
-        grid[self.agent_pos] = 0.5
-        grid[self.reward_pos] = 1.0
+    def get_state(self):
+        state = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
+        for agent_pos in self.agent_positions:
+            state[agent_pos[0], agent_pos[1]] = 1.0
+        return state
 
-        return grid
 
-
-gym.register(id='CustomEnv-v0', entry_point='custom_env:CustomEnv')
+# Register the environment with Gym
+gym.envs.register(
+    id='CustomEnv-v0',
+    entry_point='custom_env:CustomEnv',
+)

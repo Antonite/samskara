@@ -11,35 +11,40 @@ from custom_env import CustomEnv
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Step 2: Create the environment
-env = gym.make('CustomEnv-v0')
+env = gym.make('CustomEnv-v0', num_agents=2)  # Set the number of agents
 
-# Step 3: Define the neural network model
-num_states = env.observation_space.shape[0] * env.observation_space.shape[1]
+# Step 3: Define the neural network model for each agent
+num_states = env.observation_space.shape[0] * env.observation_space.shape[1]  # Update num_states
 num_actions = env.action_space.n
 
 class QNetwork(nn.Module):
     def __init__(self, num_states, num_actions):
         super(QNetwork, self).__init__()
-        self.fc1 = nn.Linear(num_states, 64)
-        self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, num_actions)
+        self.fc1 = nn.Linear(num_states, 64).to(device)
+        self.fc2 = nn.Linear(64, 64).to(device)
+        self.fc3 = nn.Linear(64, num_actions).to(device)
 
     def forward(self, x):
-        x = x.view(-1, num_states)  # Reshape the input
+        x = x.to(device)
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
         x = self.fc3(x)
         return x
 
-model = QNetwork(num_states, num_actions).to(device)
-# model.load_state_dict(torch.load("model.pth"))
-# model.eval()
 
-target_model = QNetwork(num_states, num_actions).to(device)
-target_model.load_state_dict(model.state_dict())
-target_model.eval()
+models = []
+target_models= []
+for i in range(env.num_agents):
+    model = QNetwork(num_states, num_actions)
+    target_model = QNetwork(num_states, num_actions)
+    target_model.load_state_dict(model.state_dict())
+    target_model.eval()
 
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+    models.append(model)
+    target_models.append(target_model)
+
+
+optimizers = [optim.Adam(model.parameters(), lr=0.001) for model in models]
 criterion = nn.MSELoss()
 
 # Step 4: Define the Q-learning parameters
@@ -48,91 +53,97 @@ num_episodes = 10000
 max_steps_per_episode = 100
 exploration_rate = 0.3
 max_exploration_rate = 1.0
-min_exploration_rate = 1
+min_exploration_rate = 0.5
 exploration_decay_rate = 0.01
-batch_size = 32
+batch_size = 64
 replay_buffer = deque(maxlen=10000)  # Replay buffer capacity
-# replay_buffer = torch.load("replay_buffer.pth")
 
 # Step 5: Implement the Q-learning algorithm using the neural network with experience replay
 for episode in range(num_episodes):
-    # print(exploration_rate)
-    state = env.reset()
-    state = torch.Tensor(state).to(device)
+    states = env.reset()
+    states = [torch.Tensor(state) for state in states]
     done = False
-    total_reward = 0
+    total_rewards = [0.0] * env.num_agents
 
     for step in range(max_steps_per_episode):
-        exploration_threshold = np.random.uniform(0, 1)
-        if exploration_threshold > exploration_rate:
-            with torch.no_grad():
-                action = torch.argmax(model(state)).item()
-        else:
-            action = env.action_space.sample()
+        actions = []
+        for i in range(env.num_agents):
+            exploration_threshold = np.random.uniform(0, 1)
+            if exploration_threshold > exploration_rate:
+                with torch.no_grad():
+                    action = torch.argmax(models[i](torch.cat(states))).item()
+            else:
+                action = env.action_space.sample()
+            actions.append(action)
 
-        new_state, reward, done, _ = env.step(action)
-        new_state = torch.Tensor(new_state).to(device)
+
+        new_states, rewards, done, _ = env.step(actions)
+        new_states = [torch.Tensor(state) for state in new_states]
 
         # Store the experience in the replay buffer
-        replay_buffer.append((state, action, reward, new_state, done))
+        replay_buffer.append((states, actions, rewards, new_states, done))
 
-        state = new_state
-        total_reward += reward
+        states = new_states
+        total_rewards = [total_rewards[i] + rewards[i] for i in range(env.num_agents)]
 
         if done:
             break
 
-    exploration_rate = min_exploration_rate + \
-                       (max_exploration_rate - min_exploration_rate) * np.exp(-exploration_decay_rate * episode)
+    exploration_rate = min_exploration_rate + (max_exploration_rate - min_exploration_rate) * np.exp(-exploration_decay_rate * episode)
 
-    # Update the Q-network using experience replay
+    # Update the Q-networks using experience replay
     if len(replay_buffer) >= batch_size:
         batch = random.sample(replay_buffer, batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
-        states = torch.stack(states).to(device)
-        actions = torch.tensor(actions).to(device)
-        rewards = torch.tensor(rewards).to(device)
-        next_states = torch.stack(next_states).to(device)
+        states = torch.cat([torch.cat([state.flatten() for state in agent_states]) for agent_states in states]).view(batch_size, -1)
+        next_states = torch.cat([torch.cat([state.flatten() for state in agent_states]) for agent_states in next_states]).view(batch_size, -1)
         dones = torch.tensor(dones).to(device)
+        
+        for i in range(env.num_agents):
+            agent_rewards = torch.tensor([reward[i] for reward in rewards]).to(device)
+            agent_actions = torch.tensor([action[i] for action in actions]).to(device)
 
-        q_values = model(states)
-        next_q_values = target_model(next_states).detach()
+            q_values = models[i](states)
+            next_q_values = target_models[i](next_states).detach()
 
-        target_values = rewards + discount_factor * torch.max(next_q_values, dim=1)[0] * (1 - dones.float())
+            target_values = agent_rewards + discount_factor * torch.max(next_q_values, dim=1)[0] * (1 - dones.float())
 
-        # Update the Q-values
-        q_values[range(batch_size), actions] = target_values
+            # Update the Q-values
+            q_values[range(batch_size), agent_actions] = target_values
 
-        # Compute the loss and optimize the model
-        optimizer.zero_grad()
-        loss = criterion(q_values, model(states))
-        loss.backward()
-        optimizer.step()
+            # Compute the loss and optimize the model
+            optimizers[i].zero_grad()
+            loss = criterion(q_values, models[i](states))
+            loss.backward()
+            optimizers[i].step()
 
-        # Update the target network periodically
-        if episode % 10 == 0:
-            target_model.load_state_dict(model.state_dict())
+            # Update the target networks periodically
+            if episode % 10 == 0:
+                target_models[i].load_state_dict(models[i].state_dict())
 
-    # Print the episode number and total reward
-    print(f"Episode {episode+1}: Total Reward = {total_reward}")
+    # Print the episode number and total rewards
+    print(f"Episode {episode + 1}: Total Rewards = {total_rewards}")
 
 
-torch.save(model.state_dict(), "model.pth")
 torch.save(replay_buffer, "replay_buffer.pth")
+for i in range(env.num_agents):
+    torch.save(models[i].state_dict(), "model"+str(i)+".pth")
+    torch.save(target_models[i].state_dict(), "target_model"+str(i)+".pth")
 
-# After training, you can test the agent's performance
-state = env.reset()
-state = torch.Tensor(state).to(device)
+# After training, you can test the agents' performance
+states = env.reset()
+states = [torch.Tensor(state) for state in states]
 done = False
-total_reward = 0
+total_rewards = [0.0] * env.num_agents
 env.render()
 while not done:
-    action = torch.argmax(model(state)).item()
-    state, reward, done, _ = env.step(action)
-    state = torch.Tensor(state).to(device)
-    total_reward += reward
+    actions = [torch.argmax(models[i](torch.cat(states))).item() for i in range(env.num_agents)]
+    states, rewards, done, _ = env.step(actions)
+    states = [torch.Tensor(state) for state in states]
+    total_rewards = [total_rewards[i] + rewards[i] for i in range(env.num_agents)]
     env.render()
 
-# Print the total reward achieved in the test episode
-print(f"Test Episode: Total Reward = {total_reward}")
+# Print the total rewards achieved in the test episode
+print(f"Test Episode: Total Rewards = {total_rewards}")
+
