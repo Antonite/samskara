@@ -48,7 +48,7 @@ num_episodes = 10000
 max_steps_per_episode = 100
 exploration_rate = 0.3
 max_exploration_rate = 1.0
-min_exploration_rate = 0.5
+min_exploration_rate = 1
 exploration_decay_rate = 0.01
 batch_size = 32
 replay_buffer = deque(maxlen=10000)  # Replay buffer capacity
@@ -82,8 +82,8 @@ for episode in range(num_episodes):
         if done:
             break
 
-    # exploration_rate = min_exploration_rate + \
-    #                    (max_exploration_rate - min_exploration_rate) * np.exp(-exploration_decay_rate * episode)
+    exploration_rate = min_exploration_rate + \
+                       (max_exploration_rate - min_exploration_rate) * np.exp(-exploration_decay_rate * episode)
 
     # Update the Q-network using experience replay
     if len(replay_buffer) >= batch_size:
