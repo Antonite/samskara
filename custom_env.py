@@ -2,6 +2,8 @@ import gym
 from gym import spaces
 import numpy as np
 import pygame
+import random
+import torch
 
 color_palette = (
     (240, 163, 255),
@@ -42,6 +44,9 @@ class CustomEnv(gym.Env):
         # Number of agents
         self.num_agents = num_agents
 
+        # Active agent
+        self.active_agent = 0
+
         # Render
         self.window_size = 768
         self.window = None
@@ -58,43 +63,51 @@ class CustomEnv(gym.Env):
         # Initialize the agent and reward positions
         self.agent_positions = [(0, 0)] * self.num_agents
         self.reward_pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
-        self.reward_available = True
 
-    def step(self, actions):
-        rewards = [0.0] * self.num_agents
+    def step(self, action):
+        reward = 0
         done = False
+        agent = self.active_agent
 
-        # Update the agent positions based on the chosen actions
-        for i in range(self.num_agents):
-            action = actions[i]
+        # Update the agent position based on the chosen action
+        agent_pos = self.agent_positions[agent]
 
-            if action == 0:  # left
-                self.agent_positions[i] = (self.agent_positions[i][0], max(0, self.agent_positions[i][1] - 1))
-            elif action == 1:  # right
-                self.agent_positions[i] = (self.agent_positions[i][0], min(self.grid_size - 1, self.agent_positions[i][1] + 1))
-            elif action == 2:  # up
-                self.agent_positions[i] = (max(0, self.agent_positions[i][0] - 1), self.agent_positions[i][1])
-            elif action == 3:  # down
-                self.agent_positions[i] = (min(self.grid_size - 1, self.agent_positions[i][0] + 1), self.agent_positions[i][1])
+        if action == 0:  # left
+            new_pos = (agent_pos[0], max(0, agent_pos[1] - 1))
+        elif action == 1:  # right
+            new_pos = (agent_pos[0], min(self.grid_size - 1, agent_pos[1] + 1))
+        elif action == 2:  # up
+            new_pos = (max(0, agent_pos[0] - 1), agent_pos[1])
+        elif action == 3:  # down
+            new_pos = (min(self.grid_size - 1, agent_pos[0] + 1), agent_pos[1])
+        else:  # stay
+            new_pos = agent_pos
 
-        # Check if any agent reached the reward position
-        for i in range(self.num_agents):
-            if self.agent_positions[i] == self.reward_pos:
-                if self.reward_available:
-                    rewards[i] = 1.0
-                    self.reward_available = False
+        # Check for collisions with other agents
+        if new_pos in self.agent_positions and new_pos != agent_pos:
+            # Agent collided with another agent, stay in the current position
+            new_pos = agent_pos
 
-        # Check if all agents reached the reward or the maximum number of steps is reached
-        if not self.reward_available or np.sum(rewards) == self.num_agents or np.sum(rewards) > 0.0:
-            done = True
+        self.agent_positions[agent] = new_pos
 
-        return self.get_state(), rewards, done, {}
+        # Check if the agent reached the reward position
+        if new_pos == self.reward_pos:
+            reward = 1.0
+            self.reset_reward()
+
+        return self.get_state(), reward, done, {}
+    
+    def reset_reward(self):
+        # Generate a new random reward position that is not the same as any agent position
+        valid_positions = set([(i, j) for i in range(self.grid_size) for j in range(self.grid_size)])
+        valid_positions.difference_update(set(self.agent_positions))
+        self.reward_pos = random.choice(list(valid_positions))
 
     def reset(self):
-        # Reset the agent and reward positions
-        self.agent_positions = [(0, 0)] * self.num_agents
-        self.reward_pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
-        self.reward_available = True
+        random.seed()
+        valid_positions = ([(i, j) for i in range(self.grid_size) for j in range(self.grid_size)])
+        self.agent_positions = random.sample(valid_positions, k=self.num_agents)
+        self.reset_reward()
 
         return self.get_state()
 
@@ -105,26 +118,31 @@ class CustomEnv(gym.Env):
             pygame.display.set_caption("CustomEnv")
             self.clock = pygame.time.Clock()
 
-        self.window.fill((255, 255, 255))
+        self.window.fill((14, 17, 17))
 
         cell_size = self.window_size // self.grid_size
 
         # Draw grid lines
         for x in range(0, self.window_size, cell_size):
-            pygame.draw.line(self.window, (0, 0, 0), (x, 0), (x, self.window_size))
+            pygame.draw.line(self.window, (90, 90, 90), (x, 0), (x, self.window_size))
         for y in range(0, self.window_size, cell_size):
-            pygame.draw.line(self.window, (0, 0, 0), (0, y), (self.window_size, y))
+            pygame.draw.line(self.window, (90, 90, 90), (0, y), (self.window_size, y))
 
         # Draw agent positions
         for i in range(self.num_agents):
+            colorOffset = 1 % len(color_palette)
+            color_tuple = color_palette[colorOffset]
+            colorr = color_tuple[0]
+            colorg = color_tuple[1]
+            colorb = color_tuple[2]
             agent_pos = self.agent_positions[i]
-            pygame.draw.rect(self.window, color_palette[i], (agent_pos[1] * cell_size, agent_pos[0] * cell_size, cell_size, cell_size))
+            pygame.draw.circle(self.window, (colorr,colorg,colorb), ((agent_pos[0]+0.5)*cell_size,(agent_pos[1]+0.5)*cell_size), cell_size / 3)
 
         # Draw reward position
-        pygame.draw.rect(self.window, (255, 0, 0), (self.reward_pos[1] * cell_size, self.reward_pos[0] * cell_size, cell_size, cell_size))
+        pygame.draw.rect(self.window, (0, 255, 0), (self.reward_pos[1] * cell_size, self.reward_pos[0] * cell_size, cell_size, cell_size))
 
         pygame.display.flip()
-        self.clock.tick(10)
+        # self.clock.tick(4)
 
     def close(self):
         if self.window is not None:
@@ -132,8 +150,13 @@ class CustomEnv(gym.Env):
 
     def get_state(self):
         state = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
+        # Agent positions
+        n = 1
         for agent_pos in self.agent_positions:
-            state[agent_pos[0], agent_pos[1]] = 1.0
+            state[agent_pos[0], agent_pos[1]] = n
+        # Reward positions
+        state[self.reward_pos[0], self.reward_pos[1]] = -1
+        state = [torch.Tensor(row) for row in state]
         return state
 
 
