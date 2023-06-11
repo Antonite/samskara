@@ -1,132 +1,138 @@
-import os
-import random
-import sys
-import time
-import threading
+import gym
 import numpy as np
+import random
 import torch
-from envs.sequential import SequentialEnv
-from agent import Agent
-from copy import copy
+import torch.nn as nn
+import torch.optim as optim
+from collections import deque
+from custom_env import CustomEnv
 
-size = 5
-env = SequentialEnv(render_mode="human", size=size)
+# Step 1: Set the device to CUDA if available
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Number of states
-n_inputs = env.inputs
-# Number of actions
-n_outputs = env.action_space.n
-# Number of hidden nodes in the DQN
-n_hidden = round(n_inputs*2/3) + n_outputs
+# Step 2: Create the environment
+env = gym.make('CustomEnv-v0')
 
-# Hyper params
-lr = 0.0001
-gamma = 0.9
-epsilon = 0.5
-eps_step_decay = 0.9999
-replay_size = 256
+# Step 3: Define the neural network model
+num_states = env.observation_space.shape[0] * env.observation_space.shape[1]
+num_actions = env.action_space.n
 
-# rendering
-maxStoredQVals = 3000
+class QNetwork(nn.Module):
+    def __init__(self, num_states, num_actions):
+        super(QNetwork, self).__init__()
+        self.fc1 = nn.Linear(num_states, 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, num_actions)
 
+    def forward(self, x):
+        x = x.view(-1, num_states)  # Reshape the input
+        x = torch.relu(self.fc1(x))
+        x = torch.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
 
-class Main:
-    def __init__(self, gamma, epsilon, eps_step_decay, size, max_steps=sys.maxsize - 1):
-        env.reset()
+model = QNetwork(num_states, num_actions).to(device)
+# model.load_state_dict(torch.load("model.pth"))
+# model.eval()
 
-        self.step = 0
-        self.agents = {}
-        self._max_q_values = []
-        self.size = size
+target_model = QNetwork(num_states, num_actions).to(device)
+target_model.load_state_dict(model.state_dict())
+target_model.eval()
 
-        self.gamma = gamma
-        self.epsilon = epsilon
-        self.eps_step_decay = eps_step_decay
-        self.max_steps = max_steps
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+criterion = nn.MSELoss()
 
-        for agent in env.agents:
-            self.agents[agent] = Agent(agent, n_inputs, n_outputs, n_hidden, lr)
+# Step 4: Define the Q-learning parameters
+discount_factor = 0.99
+num_episodes = 10000
+max_steps_per_episode = 100
+exploration_rate = 0.3
+max_exploration_rate = 1.0
+min_exploration_rate = 0.5
+exploration_decay_rate = 0.01
+batch_size = 32
+replay_buffer = deque(maxlen=10000)  # Replay buffer capacity
+# replay_buffer = torch.load("replay_buffer.pth")
 
-    def replay(self, agent, memory, replay_size):
-        qval = self.agents[agent].replay(memory, replay_size, self.gamma)
-        self._max_q_values.append(qval)
-        if len(self._max_q_values) > maxStoredQVals:
-            self._max_q_values.pop(0)
+# Step 5: Implement the Q-learning algorithm using the neural network with experience replay
+for episode in range(num_episodes):
+    # print(exploration_rate)
+    state = env.reset()
+    state = torch.Tensor(state).to(device)
+    done = False
+    total_reward = 0
 
-    def q_learning(self, replay_size=32, forceRender=False, dynamicRender=False):
-        ts = time.time()
-        tt = time.time()
-        self.renderThreshold = self.size ** 2 * 0.95 * 10
-        # init memory per agent
-        memory = {}
-        for agent in self.agents:
-            memory[agent] = []
+    for step in range(max_steps_per_episode):
+        exploration_threshold = np.random.uniform(0, 1)
+        if exploration_threshold > exploration_rate:
+            with torch.no_grad():
+                action = torch.argmax(model(state)).item()
+        else:
+            action = env.action_space.sample()
 
-        for i in range(self.max_steps):
-            self.step = i
+        new_state, reward, done, _ = env.step(action)
+        new_state = torch.Tensor(new_state).to(device)
 
-            # conditional rendering
-            shouldRender = self.step > 1000 and (forceRender or (
-                dynamicRender and round(self.step / 10)*10 % 5000 == 0))
+        # Store the experience in the replay buffer
+        replay_buffer.append((state, action, reward, new_state, done))
 
-            # step
-            for agent in self.agents:
-                state = env.state(agent)
-                mask = env.action_mask(agent)
-                # Epsilon percent chance to take a random movement decayed by eps_decay per step
-                if random.random() < self.epsilon:
-                    pActs = []
-                    for i, v in enumerate(mask):
-                        if v == 1:
-                            pActs.append(i)
-                    action = pActs[random.randrange(0, len(pActs))]
-                else:
-                    agent_qvals = self.agents[agent].predict(state)
-                    maxq = None
-                    for i, q in enumerate(agent_qvals):
-                        if mask[i] == 1 and (maxq == None or q > maxq):
-                            maxq = q
-                            action = i
+        state = new_state
+        total_reward += reward
 
-                # take action and add reward to total
-                obs, reward = env.step(agent, action, shouldRender)
+        if done:
+            break
 
-                # update memory
-                memory[agent].append((state, action, obs, reward))
+    # exploration_rate = min_exploration_rate + \
+    #                    (max_exploration_rate - min_exploration_rate) * np.exp(-exploration_decay_rate * episode)
 
-            # learn
-            jobs = []
-            for agent in self.agents:
-                # trim memory
-                if len(memory[agent]) > 1500:
-                    memory[agent] = memory[agent][len(memory)-1500:]
-                # Update network weights using replay memory
-                thread = threading.Thread(target=self.replay(agent, memory[agent], replay_size))
-                jobs.append(thread)
+    # Update the Q-network using experience replay
+    if len(replay_buffer) >= batch_size:
+        batch = random.sample(replay_buffer, batch_size)
+        states, actions, rewards, next_states, dones = zip(*batch)
 
-            # Start the threads
-            for j in jobs:
-                j.start()
-            # Ensure all of the threads have finished
-            for j in jobs:
-                j.join()
+        states = torch.stack(states).to(device)
+        actions = torch.tensor(actions).to(device)
+        rewards = torch.tensor(rewards).to(device)
+        next_states = torch.stack(next_states).to(device)
+        dones = torch.tensor(dones).to(device)
 
-            if self.step % replay_size == 0:
-                te = time.time()
-                self.print_step(te-tt, te-ts)
-                tt = te
+        q_values = model(states)
+        next_q_values = target_model(next_states).detach()
 
-    def print_step(self, batchTime, totalTime):
-        print("Step: %s -- Epsilon %s -- QVal %s/%s -- Batch %s -- Total %s" %
-              (str(self.step),
-               str("%.2f" % self.epsilon),
-               str("%.0f" % max(self._max_q_values)),
-               str("%.0f" % self.renderThreshold),
-               str("%.1fs" % batchTime),
-               str("%.1fs" % totalTime)))
+        target_values = rewards + discount_factor * torch.max(next_q_values, dim=1)[0] * (1 - dones.float())
+
+        # Update the Q-values
+        q_values[range(batch_size), actions] = target_values
+
+        # Compute the loss and optimize the model
+        optimizer.zero_grad()
+        loss = criterion(q_values, model(states))
+        loss.backward()
+        optimizer.step()
+
+        # Update the target network periodically
+        if episode % 10 == 0:
+            target_model.load_state_dict(model.state_dict())
+
+    # Print the episode number and total reward
+    print(f"Episode {episode+1}: Total Reward = {total_reward}")
 
 
-if __name__ == "__main__":
-    main = Main(gamma=gamma, epsilon=epsilon, eps_step_decay=eps_step_decay, size=size)
-    main.q_learning(replay_size=replay_size, forceRender=False, dynamicRender=True)
-    input()
+torch.save(model.state_dict(), "model.pth")
+torch.save(replay_buffer, "replay_buffer.pth")
+
+# After training, you can test the agent's performance
+state = env.reset()
+state = torch.Tensor(state).to(device)
+done = False
+total_reward = 0
+env.render()
+while not done:
+    action = torch.argmax(model(state)).item()
+    state, reward, done, _ = env.step(action)
+    state = torch.Tensor(state).to(device)
+    total_reward += reward
+    env.render()
+
+# Print the total reward achieved in the test episode
+print(f"Test Episode: Total Reward = {total_reward}")
