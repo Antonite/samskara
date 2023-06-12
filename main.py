@@ -63,8 +63,8 @@ criterion = nn.MSELoss()
 
 # Step 4: Define the Q-learning parameters
 discount_factor = 0.99
-num_episodes = 10000
-max_steps_per_episode = 100
+num_episodes = 0
+max_steps_per_episode = 1000
 exploration_rate = 0.5
 batch_size = 64
 
@@ -146,7 +146,11 @@ env.render()
 while not done:
     for i in range(env.num_agents):
         env.set_active_agent(i)
-        action = torch.argmax(models[i](torch.tensor(state))).item()
+
+        valid_moves = env.get_valid_moves(i)
+        action_values = models[i](torch.tensor(state)).squeeze()
+        valid_action_values = action_values[valid_moves]
+        action = valid_moves[torch.argmax(valid_action_values)]
         state, reward, done, _, _ = env.step(action)
         total_rewards[i] += reward
         pygame.event.pump()
