@@ -66,9 +66,6 @@ discount_factor = 0.99
 num_episodes = 10000
 max_steps_per_episode = 100
 exploration_rate = 0.5
-max_exploration_rate = 1.0
-min_exploration_rate = 0.5
-exploration_decay_rate = 0.001
 batch_size = 64
 
 # Step 5: Implement the Q-learning algorithm using the neural network with experience replay
@@ -101,8 +98,6 @@ for episode in range(num_episodes):
 
         if done:
             break
-
-    # exploration_rate = min_exploration_rate + (max_exploration_rate - min_exploration_rate) * np.exp(-exploration_decay_rate * episode)
 
     # Update the Q-networks using experience replay
     for i in range(env.num_agents):
@@ -138,10 +133,10 @@ for episode in range(num_episodes):
     print(f"Episode {episode + 1}: Total Rewards = {total_rewards}")
 
 
-# for i in range(env.num_agents):
-#     torch.save(models[i].state_dict(), "model"+str(i)+".pth")
-#     torch.save(target_models[i].state_dict(), "target_model"+str(i)+".pth")
-#     torch.save(replay_buffers[i], "replay_buffer"+str(i)+".pth")
+for i in range(env.num_agents):
+    torch.save(models[i].state_dict(), "model"+str(i)+".pth")
+    torch.save(target_models[i].state_dict(), "target_model"+str(i)+".pth")
+    torch.save(replay_buffers[i], "replay_buffer"+str(i)+".pth")
 
 # After training, you can test the agents' performance
 state, _ = env.reset()
