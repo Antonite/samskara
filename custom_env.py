@@ -61,8 +61,7 @@ class CustomEnv(gym.Env):
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
         # Initialize the agent and reward positions
-        self.agent_positions = [(0, 0)] * self.num_agents
-        self.reward_pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
+        self.reset()
 
     def step(self, action):
         reward = 0
@@ -142,7 +141,7 @@ class CustomEnv(gym.Env):
         pygame.draw.rect(self.window, (0, 255, 0), (self.reward_pos[0] * cell_size, self.reward_pos[1] * cell_size, cell_size, cell_size))
 
         pygame.display.flip()
-        self.clock.tick(4)
+        self.clock.tick(10)
 
     def close(self):
         if self.window is not None:
