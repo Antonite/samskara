@@ -62,7 +62,7 @@ class CustomEnv(gym.Env):
         self.reset()
 
     def step(self, action):
-        reward = 0
+        reward = -0.01
         done = False
         agent = self.active_agent
 
@@ -82,9 +82,11 @@ class CustomEnv(gym.Env):
 
         # Check for collisions with other agents
         if new_pos in self.agent_positions and new_pos != agent_pos:
-            print("ERROR UNEXPECTED COLLISION. pos: ", agent_pos, " new pos: ", new_pos, " all pos: ", self.agent_positions, " action: ", action)
             # Agent collided with another agent, stay in the current position
             new_pos = agent_pos
+
+        if new_pos == agent_pos and action != 4:
+            reward = -0.1
 
         self.agent_positions[agent] = new_pos
 
@@ -94,19 +96,6 @@ class CustomEnv(gym.Env):
             self.reset_reward()
 
         return self.get_state(), reward, done, False, {}
-    
-    def get_valid_moves(self, agent):
-        agent_pos = self.agent_positions[agent]
-        valid_moves = [4]
-        if agent_pos[1] > 0 and (agent_pos[0], agent_pos[1] - 1) not in self.agent_positions:
-            valid_moves.append(0)  # left
-        if agent_pos[1] < self.grid_size - 1 and (agent_pos[0], agent_pos[1] + 1) not in self.agent_positions:
-            valid_moves.append(1)  # right
-        if agent_pos[0] > 0 and (agent_pos[0] - 1, agent_pos[1]) not in self.agent_positions:
-            valid_moves.append(2)  # up
-        if agent_pos[0] < self.grid_size - 1 and (agent_pos[0] + 1, agent_pos[1]) not in self.agent_positions:
-            valid_moves.append(3)  # down
-        return valid_moves
     
     def reset_reward(self):
         # Generate a new random reward position that is not the same as any agent position

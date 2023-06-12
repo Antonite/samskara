@@ -7,6 +7,7 @@ import torch.optim as optim
 from collections import deque
 from custom_env import CustomEnv
 import pygame
+import time
 
 # Step 1: Set the device to CUDA if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -38,19 +39,19 @@ models = []
 target_models = []
 replay_buffers = []
 for i in range(env.num_agents):
-    model = QNetwork(num_states, num_actions)
-    target_model = QNetwork(num_states, num_actions)
-    target_model.load_state_dict(model.state_dict())
-    target_model.eval()
-    replay_buffer = deque(maxlen=10000)
-
     # model = QNetwork(num_states, num_actions)
-    # model.load_state_dict(torch.load("model"+str(i)+".pth"))
-    # model.eval()
     # target_model = QNetwork(num_states, num_actions)
-    # target_model.load_state_dict(torch.load("target_model"+str(i)+".pth"))
+    # target_model.load_state_dict(model.state_dict())
     # target_model.eval()
-    # replay_buffer = torch.load("replay_buffer"+str(i)+".pth")
+    # replay_buffer = deque(maxlen=10000)
+
+    model = QNetwork(num_states, num_actions)
+    model.load_state_dict(torch.load("model"+str(i)+".pth"))
+    model.eval()
+    target_model = QNetwork(num_states, num_actions)
+    target_model.load_state_dict(torch.load("target_model"+str(i)+".pth"))
+    target_model.eval()
+    replay_buffer = torch.load("replay_buffer"+str(i)+".pth")
 
     replay_buffers.append(replay_buffer)
     models.append(model)
@@ -63,29 +64,26 @@ criterion = nn.MSELoss()
 
 # Step 4: Define the Q-learning parameters
 discount_factor = 0.99
-num_episodes = 0
-max_steps_per_episode = 1000
+num_episodes = 50000
+max_steps_per_episode = 20
 exploration_rate = 0.5
-batch_size = 64
+batch_size = 32
+start_time = time.time()
+total_rewards = [0.0] * env.num_agents
 
 # Step 5: Implement the Q-learning algorithm using the neural network with experience replay
 for episode in range(num_episodes):
     state, _ = env.reset()
     done = False
-    total_rewards = [0.0] * env.num_agents
 
     for step in range(max_steps_per_episode * env.num_agents):
         for i in range(env.num_agents):
             exploration_threshold = np.random.uniform(0, 1)
             if exploration_threshold > exploration_rate:
                 with torch.no_grad():
-                    valid_moves = env.get_valid_moves(i)
-                    action_values = models[i](torch.tensor(state)).squeeze()
-                    valid_action_values = action_values[valid_moves]
-                    action = valid_moves[torch.argmax(valid_action_values)]
+                    action = torch.argmax(models[i](torch.tensor(state))).item()
             else:
-                valid_moves = env.get_valid_moves(i)
-                action = random.choice(valid_moves)
+                action = env.action_space.sample()
 
             env.set_active_agent(i)
             new_state, reward, _, _, _ = env.step(action)
@@ -130,7 +128,14 @@ for episode in range(num_episodes):
                 target_models[i].load_state_dict(models[i].state_dict())
 
     # Print the episode number and total rewards
-    print(f"Episode {episode + 1}: Total Rewards = {total_rewards}")
+    if episode % 1000 == 0 and episode > 0:
+        elapsed_time = time.time() - start_time
+        total_rewards = [r / 1000 for r in total_rewards]
+        print(f"Episode {episode}: Total Average Rewards = {total_rewards} Elapsed Time = {round(elapsed_time)} seconds")
+
+        start_time = time.time()
+        total_rewards = [0.0] * env.num_agents
+    
 
 
 for i in range(env.num_agents):
@@ -146,11 +151,7 @@ env.render()
 while not done:
     for i in range(env.num_agents):
         env.set_active_agent(i)
-
-        valid_moves = env.get_valid_moves(i)
-        action_values = models[i](torch.tensor(state)).squeeze()
-        valid_action_values = action_values[valid_moves]
-        action = valid_moves[torch.argmax(valid_action_values)]
+        action = torch.argmax(models[i](torch.tensor(state))).item()
         state, reward, done, _, _ = env.step(action)
         total_rewards[i] += reward
         pygame.event.pump()
