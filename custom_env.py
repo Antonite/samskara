@@ -1,5 +1,5 @@
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 import pygame
 import random
@@ -55,10 +55,8 @@ class CustomEnv(gym.Env):
         # Define the possible actions (left, right, up, down, stay)
         self.action_space = spaces.Discrete(5)
 
-        # Define the observation space (grid size + agent positions)
-        low = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
-        high = np.ones((self.grid_size, self.grid_size), dtype=np.float32)
-        self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
+        # Define the observation space (grid size + agent + reward position)
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.grid_size*self.grid_size,), dtype=np.float32)
 
         # Initialize the agent and reward positions
         self.reset()
@@ -84,6 +82,7 @@ class CustomEnv(gym.Env):
 
         # Check for collisions with other agents
         if new_pos in self.agent_positions and new_pos != agent_pos:
+            print("ERROR UNEXPECTED COLLISION. pos: ", agent_pos, " new pos: ", new_pos, " all pos: ", self.agent_positions, " action: ", action)
             # Agent collided with another agent, stay in the current position
             new_pos = agent_pos
 
@@ -94,7 +93,20 @@ class CustomEnv(gym.Env):
             reward = 1.0
             self.reset_reward()
 
-        return self.get_state(), reward, done, {}
+        return self.get_state(), reward, done, False, {}
+    
+    def get_valid_moves(self, agent):
+        agent_pos = self.agent_positions[agent]
+        valid_moves = [4]
+        if agent_pos[1] > 0 and (agent_pos[0], agent_pos[1] - 1) not in self.agent_positions:
+            valid_moves.append(0)  # left
+        if agent_pos[1] < self.grid_size - 1 and (agent_pos[0], agent_pos[1] + 1) not in self.agent_positions:
+            valid_moves.append(1)  # right
+        if agent_pos[0] > 0 and (agent_pos[0] - 1, agent_pos[1]) not in self.agent_positions:
+            valid_moves.append(2)  # up
+        if agent_pos[0] < self.grid_size - 1 and (agent_pos[0] + 1, agent_pos[1]) not in self.agent_positions:
+            valid_moves.append(3)  # down
+        return valid_moves
     
     def reset_reward(self):
         # Generate a new random reward position that is not the same as any agent position
@@ -102,13 +114,13 @@ class CustomEnv(gym.Env):
         valid_positions.difference_update(set(self.agent_positions))
         self.reward_pos = random.choice(list(valid_positions))
 
-    def reset(self):
-        random.seed()
+    def reset(self, seed: int | None = None, options: dict[str, object()] | None = None,):
+        super().reset(seed=123)
         valid_positions = ([(i, j) for i in range(self.grid_size) for j in range(self.grid_size)])
         self.agent_positions = random.sample(valid_positions, k=self.num_agents)
         self.reset_reward()
 
-        return self.get_state()
+        return self.get_state(), {}
 
     def render(self):
         if self.window is None:
@@ -148,14 +160,15 @@ class CustomEnv(gym.Env):
             pygame.quit()
 
     def get_state(self):
-        state = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
+        state = np.zeros((self.grid_size*self.grid_size,), dtype=np.float32)
         # Agent positions
-        n = 1
+        n = 0.1
         for agent_pos in self.agent_positions:
-            state[agent_pos[0], agent_pos[1]] = n
+            state[agent_pos[0]*self.grid_size + agent_pos[1]] = n
+            n+=0.1
         # Reward positions
-        state[self.reward_pos[0], self.reward_pos[1]] = -1
-        state = [torch.Tensor(row) for row in state]
+        state[self.reward_pos[0]*self.grid_size + self.reward_pos[1]] = 1
+
         return state
     
     def set_active_agent(self, agent):

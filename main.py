@@ -1,10 +1,9 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import time
 from collections import deque
 from custom_env import CustomEnv
 import pygame
@@ -18,13 +17,13 @@ torch.set_default_tensor_type(torch.cuda.FloatTensor if device.type == "cuda" el
 env = gym.make('CustomEnv-v0', num_agents=2)  # Set the number of agents
 
 # Step 3: Define the neural network model for each agent
-num_states = env.observation_space.shape[0] * env.observation_space.shape[1]  # Update num_states
+num_states = env.observation_space.shape[0]
 num_actions = env.action_space.n
 
 class QNetwork(nn.Module):
     def __init__(self, num_states, num_actions):
         super(QNetwork, self).__init__()
-        self.fc1 = nn.Linear(num_states, 64)
+        self.fc1 = nn.Linear(num_states, 64)  # Adjusted input size to 25
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, num_actions)
 
@@ -74,7 +73,7 @@ batch_size = 64
 
 # Step 5: Implement the Q-learning algorithm using the neural network with experience replay
 for episode in range(num_episodes):
-    state = env.reset()
+    state, _ = env.reset()
     done = False
     total_rewards = [0.0] * env.num_agents
 
@@ -83,13 +82,16 @@ for episode in range(num_episodes):
             exploration_threshold = np.random.uniform(0, 1)
             if exploration_threshold > exploration_rate:
                 with torch.no_grad():
-                    action = torch.argmax(models[i](torch.cat(state))).item()
+                    valid_moves = env.get_valid_moves(i)
+                    action_values = models[i](torch.tensor(state)).squeeze()
+                    valid_action_values = action_values[valid_moves]
+                    action = valid_moves[torch.argmax(valid_action_values)]
             else:
-                action = env.action_space.sample()
-
+                valid_moves = env.get_valid_moves(i)
+                action = random.choice(valid_moves)
 
             env.set_active_agent(i)
-            new_state, reward, _, _ = env.step(action)
+            new_state, reward, _, _, _ = env.step(action)
 
             # Store the experience in the replay buffer
             replay_buffers[i].append((state, action, reward, new_state, done))
@@ -100,7 +102,7 @@ for episode in range(num_episodes):
         if done:
             break
 
-    exploration_rate = min_exploration_rate + (max_exploration_rate - min_exploration_rate) * np.exp(-exploration_decay_rate * episode)
+    # exploration_rate = min_exploration_rate + (max_exploration_rate - min_exploration_rate) * np.exp(-exploration_decay_rate * episode)
 
     # Update the Q-networks using experience replay
     for i in range(env.num_agents):
@@ -108,8 +110,8 @@ for episode in range(num_episodes):
             batch = random.sample(replay_buffers[i], batch_size)
             states, actions, rewards, next_states, dones = zip(*batch)
 
-            states = torch.cat([torch.cat([state.flatten() for state in agent_states]) for agent_states in states]).view(batch_size, -1)
-            next_states = torch.cat([torch.cat([state.flatten() for state in agent_states]) for agent_states in next_states]).view(batch_size, -1)
+            states = torch.tensor(np.array(states))
+            next_states = torch.tensor(np.array(next_states))
             rewards = torch.tensor(rewards)
             actions = torch.tensor(actions)
             dones = torch.tensor(dones)
@@ -136,21 +138,21 @@ for episode in range(num_episodes):
     print(f"Episode {episode + 1}: Total Rewards = {total_rewards}")
 
 
-for i in range(env.num_agents):
-    torch.save(models[i].state_dict(), "model"+str(i)+".pth")
-    torch.save(target_models[i].state_dict(), "target_model"+str(i)+".pth")
-    torch.save(replay_buffers[i], "replay_buffer"+str(i)+".pth")
+# for i in range(env.num_agents):
+#     torch.save(models[i].state_dict(), "model"+str(i)+".pth")
+#     torch.save(target_models[i].state_dict(), "target_model"+str(i)+".pth")
+#     torch.save(replay_buffers[i], "replay_buffer"+str(i)+".pth")
 
 # After training, you can test the agents' performance
-state = env.reset()
+state, _ = env.reset()
 done = False
 total_rewards = [0.0] * env.num_agents
 env.render()
 while not done:
     for i in range(env.num_agents):
         env.set_active_agent(i)
-        action = torch.argmax(models[i](torch.cat(state))).item()
-        state, reward, done, _ = env.step(action)
+        action = torch.argmax(models[i](torch.tensor(state))).item()
+        state, reward, done, _, _ = env.step(action)
         total_rewards[i] += reward
         pygame.event.pump()
         env.render()
