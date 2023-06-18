@@ -112,16 +112,17 @@ for epoch in range(epochs):
                     break
             if done:
                 break
-
+        
         total_steps += step+1
 
         # Assign retroactive rewards at the end of the episode
-        for team in range(2):
-            if len(episode_buffer[team]) > 0:
-                m = 100 / len(episode_buffer[team])
-                bonus = m if team == winning_team else -m
-                modified_transitions = [(s, a, r + bonus, n, d) for s, a, r, n, d in episode_buffer[team]]
-                agent_replay_buffers[team].extend(modified_transitions)
+        if done:
+            for team in range(2):
+                if len(episode_buffer[team]) > 0:
+                    m = 100 / len(episode_buffer[team])
+                    bonus = m if team == winning_team else -m
+                    modified_transitions = [(s, a, r + bonus, n, d) for s, a, r, n, d in episode_buffer[team]]
+                    agent_replay_buffers[team].extend(modified_transitions)
             
         # Update the Q-networks using experience replay
         for team in range(2):

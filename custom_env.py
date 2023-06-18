@@ -103,11 +103,11 @@ class CustomEnv(gym.Env):
             if old_loc != agent.location:
                 self.grid[agent.location[0]][agent.location[1]] = agent
                 self.grid[old_loc[0]][old_loc[1]] = None
-                reward += 0.005
+                reward += 0.01
             else:
                 reward -= 0.01
         elif action == 3:
-            reward -= 0.01
+            reward -= 0.015
             if agent.type == ag.Type.Berserker:
                 # Check all surrounding tiles for other agents
                 surrounding_tiles = [
