@@ -39,14 +39,16 @@ class CustomEnv(gym.Env):
         self.reset()
 
     def step(self, action):
+        reward = 0
         done = False
         agent = self.agents[self.active_team][self.active_agent]
-        reward = -0.001
         # Update rotation
         if action == 0:
             agent.rotation = ag.Rotation((agent.rotation.value - 1) % 4)
+            reward = -0.005
         elif action == 1:
             agent.rotation = ag.Rotation((agent.rotation.value + 1) % 4)
+            reward = -0.005
         elif action == 2:
             # Determine the maximum number of tiles the agent can move
             speed = ag.PROFESSIONS[agent.type].speed
@@ -101,11 +103,11 @@ class CustomEnv(gym.Env):
             if old_loc != agent.location:
                 self.grid[agent.location[0]][agent.location[1]] = agent
                 self.grid[old_loc[0]][old_loc[1]] = None
-                reward += 0.001
+                reward += 0.005
             else:
-                reward -= 0.001
+                reward -= 0.01
         elif action == 3:
-            reward -= 0.001
+            reward -= 0.01
             if agent.type == ag.Type.Berserker:
                 # Check all surrounding tiles for other agents
                 surrounding_tiles = [
@@ -128,7 +130,7 @@ class CustomEnv(gym.Env):
                             a.health -= ag.PROFESSIONS[agent.type].power
                             # float inaccuracies
                             if a.health <= 0.001:
-                                reward += 0.01
+                                reward += 0.03
                                 # Kill the agent
                                 self.grid[tile[0]][tile[1]] = None
                                 # remove from agent list
@@ -139,7 +141,7 @@ class CustomEnv(gym.Env):
                                             done = True
                                         break
                             else:
-                                reward += 0.002
+                                reward += 0.015
                             
             else:
                 new_row, new_col = agent.location
@@ -158,7 +160,7 @@ class CustomEnv(gym.Env):
                     if a != None and a.team != self.active_team:
                         a.health -= ag.PROFESSIONS[agent.type].power
                         if a.health <= 0.001:
-                            reward += 0.01
+                            reward += 0.03
                             # Kill the agent
                             self.grid[new_row][new_col] = None
                             # remove from agent list
@@ -169,14 +171,17 @@ class CustomEnv(gym.Env):
                                         done = True
                                     break
                         else:
-                            reward += 0.002
+                            reward += 0.015
             
                     
         return self.get_state(), reward, done, False, {}
 
 
-    def reset(self, seed: int | None = None, options: dict[str, object()] | None = None,):
+    def reset(self, seed: int | None = None, options: dict[str, object()] | None = None):
         super().reset()
+        if options != None and options["fair"]:
+            return self.fair_reset()
+
         self.grid = [[None for _ in range(self.grid_size)] for _ in range(self.grid_size)]
         self.agents = []
 
@@ -192,7 +197,39 @@ class CustomEnv(gym.Env):
                 self.grid[agent_positions[agent][0]][agent_positions[agent][1]] = a
             self.agents.append(agents)              
 
-        # self.reset_reward()
+        return self.get_state(), {}
+    
+    def fair_reset(self):
+        self.grid = [[None for _ in range(self.grid_size)] for _ in range(self.grid_size)]
+        self.agents = []
+
+        agent_type = random.choice([ag.Type.Runner, ag.Type.Berserker])
+        # Yellow team
+        yellow_agents = []
+        n = 0
+        for row in range(self.grid_size // 2):
+            for col in range(self.grid_size):
+                if n >= self.num_agents:
+                    break
+                a = ag.Agent((row, col), ag.Rotation.Down, agent_type, 0, self.grid_size)
+                self.grid[row][col] = a  # Place the agent in the grid
+                yellow_agents.append(a)  # Add the agent to the list of agents
+                n += 1
+        # Purple team
+        purple_agents = []
+        n = 0
+        for row in reversed(range(self.grid_size // 2, self.grid_size)):
+            for col in reversed(range(self.grid_size)):
+                if n >= self.num_agents:
+                    break
+                a = ag.Agent((row, col), ag.Rotation.Up, agent_type, 0, self.grid_size)
+                self.grid[row][col] = a  # Place the agent in the grid
+                purple_agents.append(a)  # Add the agent to the list of agents
+                n += 1
+
+        self.agents.append(yellow_agents)
+        self.agents.append(purple_agents)
+
         return self.get_state(), {}
 
     def render(self):

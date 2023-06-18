@@ -8,8 +8,10 @@ from custom_env import CustomEnv
 import pygame
 import time
 from collections import deque
+from datetime import datetime
 
 training_dir = "training/"
+kings_dir = "training/kings/"
 
 # Step 1: Set the device to CUDA if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -17,7 +19,7 @@ torch.set_default_tensor_type(torch.cuda.FloatTensor if device.type == "cuda" el
 
 
 # Step 2: Create the environment
-env = gym.make('CustomEnv-v0', num_agents=2, grid_size=5)  # Set the number of agents
+env = gym.make('CustomEnv-v0', num_agents=1, grid_size=5)  # Set the number of agents
 
 # Step 3: Define the neural network model for each agent
 num_states = env.observation_space.shape[0]
@@ -46,25 +48,29 @@ discount_factor = 0.99
 max_steps_per_episode = 1000000
 exploration_rate = 0.5
 batch_size = 1000
-replay_start_threshold = 100000
+replay_start_threshold = 50000
 
 
-
+agent_models = []
+agent_target_models = []
+agent_replay_buffers = []
 # agent_model = QNetwork(num_states, num_actions)
 # agent_target_model = QNetwork(num_states, num_actions)
 # agent_target_model.load_state_dict(agent_model.state_dict())
 # agent_target_model.eval()
 # agent_replay_buffer = deque(maxlen=replay_start_threshold)
-
-agent_model = QNetwork(num_states, num_actions)
-agent_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
-agent_model.eval()
+king_model = QNetwork(num_states, num_actions)
+king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
+king_model.eval()
 agent_target_model = QNetwork(num_states, num_actions)
 agent_target_model.load_state_dict(torch.load(f"{training_dir}agent_target_model.pth"))
 agent_target_model.eval()
-agent_replay_buffer = torch.load(f"{training_dir}agent_replay_buffer.pth")
+for team in range(2):
+    agent_models.append(king_model)
+    agent_target_models.append(agent_target_model)
+    agent_replay_buffers.append(deque(maxlen=replay_start_threshold))
 
-optimizer = optim.Adam(agent_model.parameters(), lr=0.001)
+optimizer = optim.Adam(king_model.parameters(), lr=0.001)
 criterion = nn.MSELoss()
 
 start_time = time.time()
@@ -85,7 +91,7 @@ for epoch in range(epochs):
                     exploration_threshold = np.random.uniform(0, 1)
                     if exploration_threshold > exploration_rate:
                         with torch.no_grad():
-                            action = torch.argmax(agent_model(torch.tensor(state))).item()
+                            action = torch.argmax(agent_models[team](torch.tensor(state))).item()
                     else:
                         action = env.action_space.sample()
 
@@ -96,9 +102,6 @@ for epoch in range(epochs):
 
                     # Store the experience in the episode buffer
                     episode_buffer[team].append((state, action, reward, new_state, done))
-
-                    # # Store the experience in the replay buffer
-                    # agent_replay_buffer.append((state, action, reward, new_state, False))
 
                     state = new_state
                     
@@ -118,43 +121,44 @@ for epoch in range(epochs):
                 m = 100 / len(episode_buffer[team])
                 bonus = m if team == winning_team else -m
                 modified_transitions = [(s, a, r + bonus, n, d) for s, a, r, n, d in episode_buffer[team]]
-                agent_replay_buffer.extend(modified_transitions)
+                agent_replay_buffers[team].extend(modified_transitions)
             
         # Update the Q-networks using experience replay
-        if len(agent_replay_buffer) >= replay_start_threshold:
-            # Get a random batch from the buffer
-            batch = random.choices(agent_replay_buffer, k=batch_size)
-            # Remove the batch from the buffer
-            for _ in range(batch_size):
-                agent_replay_buffer.popleft()
+        for team in range(2):
+            if len(agent_replay_buffers[team]) >= replay_start_threshold:
+                # Get a random batch from the buffer
+                batch = random.choices(agent_replay_buffers[team], k=batch_size)
+                # Remove the batch from the buffer
+                for _ in range(batch_size):
+                    agent_replay_buffers[team].popleft()
 
-            states, actions, rewards, next_states, dones = zip(*batch)
+                states, actions, rewards, next_states, dones = zip(*batch)
 
-            states = torch.tensor(np.array(states))
-            next_states = torch.tensor(np.array(next_states))
-            rewards = torch.tensor(rewards)
-            actions = torch.tensor(actions)
-            dones = torch.tensor(dones)
-            
-            q_values = agent_model(states)
-            next_q_values = agent_target_model(next_states).detach()
+                states = torch.tensor(np.array(states))
+                next_states = torch.tensor(np.array(next_states))
+                rewards = torch.tensor(rewards)
+                actions = torch.tensor(actions)
+                dones = torch.tensor(dones)
+                
+                q_values = agent_models[team](states)
+                next_q_values = agent_target_models[team](next_states).detach()
 
-            target_values = rewards + discount_factor * torch.max(next_q_values, dim=1)[0] * (1 - dones.float())
+                target_values = rewards + discount_factor * torch.max(next_q_values, dim=1)[0] * (1 - dones.float())
 
-            # Update the Q-values
-            q_values[range(batch_size), actions] = target_values
+                # Update the Q-values
+                q_values[range(batch_size), actions] = target_values
 
-            # Compute the loss and optimize the model
-            optimizer.zero_grad()
-            loss = criterion(q_values, agent_model(states))
-            loss.backward()
-            optimizer.step()
+                # Compute the loss and optimize the model
+                optimizer.zero_grad()
+                loss = criterion(q_values, agent_models[team](states))
+                loss.backward()
+                optimizer.step()
 
-            # Update the target networks periodically
-            if update == 10:
-                agent_target_model.load_state_dict(agent_model.state_dict())
-                update = 0
-            update += 1
+                # Update the target networks periodically
+                if update == 10:
+                    agent_target_models[team].load_state_dict(agent_models[team].state_dict())
+                    update = 0
+                update += 1
 
     # Print the episode number and total rewards
     elapsed_time = time.time() - start_time
@@ -164,37 +168,91 @@ for epoch in range(epochs):
     start_time = time.time()
     total_rewards = [0.0] * 2
     total_steps = 0
-    # Save state
-    torch.save(agent_model.state_dict(), f"{training_dir}agent_model.pth")
+
+    # Fight
+    max_steps = 200
+    max_matches = 100
+    new_king = False
+    # yellow vs king
+    won = [0,0]
+    fight_models = [agent_models[0],king_model]
+    # 100 matches
+    for _ in range(max_matches):
+        state, _ = env.reset(options={"fair": True})
+        # cap at 200 steps
+        for _ in range(max_steps):
+            for team in range(2):
+                for agent in range(env.team_len(team)):
+                    env.set_active(agent,team)
+                    action = torch.argmax(fight_models[team](torch.tensor(state))).item()
+                    state, reward, done, _, _ = env.step(action)
+                    env.set_last_action(action)
+                    if done:
+                        won[team] += 1
+                        break
+                if done:
+                    break
+            if done:
+                break
+    if won[0] >= won[1]:
+        print(f"Yellow beat The King {won[0]} - {won[1]}")
+        winner = "Yellow"
+        new_king = True
+    else:
+        print(f"King beat Yellow {won[1]} - {won[0]}")
+        winner = "The King"
+    
+    # Winner vs purple
+    # set winner
+    won = [0,0]
+    fight_models = [agent_models[1]]
+    if won[0] >= won[1]:
+        fight_models.append(agent_models[0])
+    else:
+        fight_models.append(king_model)
+    for _ in range(max_matches):
+        state, _ = env.reset(options={"fair": True})
+        # cap at 200 steps
+        for _ in range(max_steps):
+            for team in range(2):
+                for agent in range(env.team_len(team)):
+                    env.set_active(agent,team)
+                    action = torch.argmax(fight_models[team](torch.tensor(state))).item()
+                    state, reward, done, _, _ = env.step(action)
+                    env.set_last_action(action)
+                    if done:
+                        won[team] += 1
+                        break
+                if done:
+                    break
+            if done:
+                break
+    if won[0] >= won[1]:
+        print(f"Purple beat {winner} {won[0]} - {won[1]}")
+        winning_model = fight_models[0]
+        new_king = True
+    else:
+        print(f"{winner} beat purple {won[1]} - {won[0]}")
+        winning_model = fight_models[1]
+    
+    # Use winning model
+    agent_models = []
+    agent_target_models = []
+    for team in range(2):
+        agent_models.append(winning_model)
+        agent_target_model = QNetwork(num_states, num_actions)
+        agent_target_model.load_state_dict(winning_model.state_dict())
+        agent_target_model.eval()
+        agent_target_models.append(agent_target_model)
+
+    # Save old king
+    if new_king:
+        now = datetime.now()
+        formatted_time = now.strftime("%B-%d-%H-%M")
+        torch.save(king_model.state_dict(), f"{kings_dir}agent_model{formatted_time}.pth")
+        king_model = winning_model
+
+    # Save current state
+    torch.save(winning_model.state_dict(), f"{training_dir}agent_model.pth")
     torch.save(agent_target_model.state_dict(), f"{training_dir}agent_target_model.pth")
-    torch.save(agent_replay_buffer, f"{training_dir}agent_replay_buffer.pth")
     
-    
-
-
-
-# After training, you can test the agents' performance
-done = False
-while not done:
-    state, _ = env.reset()
-    total_rewards = [0.0] * 2
-    env.render()
-    # 100 steps at a time
-    for i in range(100):
-        for team in range(2):
-            for agent in range(env.team_len(team)):
-                env.set_active(agent,team)
-                action = torch.argmax(agent_model(torch.tensor(state))).item()
-                state, reward, _, _, _ = env.step(action)
-                env.set_last_action(action)
-                # print(f"agent: {agent} team: {team} action: {action} reward: {reward}")
-                total_rewards[team] += reward
-                pygame.event.pump()
-                env.render()
-
-    # Print the total rewards achieved in the test episode
-    print(f"Test Episode: Total Rewards = {total_rewards}")
-    
-
-
-
