@@ -38,7 +38,7 @@ king_model.eval()
 # After training, you can test the agents' performance
 done = False
 while not done:
-    state, _ = env.reset()
+    state, _ = env.reset(options={"fair": True})
     total_rewards = [0.0] * 2
     env.render()
     # 100 steps at a time
@@ -46,6 +46,7 @@ while not done:
         for team in range(2):
             for agent in range(env.team_len(team)):
                 env.set_active(agent,team)
+                # v = king_model(torch.tensor(state))
                 action = torch.argmax(king_model(torch.tensor(state))).item()
                 state, reward, _, _, _ = env.step(action)
                 env.set_last_action(action)

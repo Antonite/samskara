@@ -31,8 +31,8 @@ class CustomEnv(gym.Env):
 
         # Define the possible actions (turn left, turn right, move, attack)
         self.action_space = spaces.Discrete(4)
-        # Define the observation space (grid size * agent parameters + active agent parameters + team's turn)
-        self.state_length = self.grid_size*self.grid_size*ag.AGENT_FIELDS+ag.AGENT_FIELDS+1
+        # Define the observation space (grid size * agent parameters + team's turn)
+        self.state_length = self.grid_size*self.grid_size*ag.AGENT_FIELDS+1
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.state_length,), dtype=np.float32)
 
         # Initialize the agent and reward positions
@@ -45,10 +45,10 @@ class CustomEnv(gym.Env):
         # Update rotation
         if action == 0:
             agent.rotation = ag.Rotation((agent.rotation.value - 1) % 4)
-            reward = -0.005
+            reward = -0.05
         elif action == 1:
             agent.rotation = ag.Rotation((agent.rotation.value + 1) % 4)
-            reward = -0.005
+            reward = -0.05
         elif action == 2:
             # Determine the maximum number of tiles the agent can move
             speed = ag.PROFESSIONS[agent.type].speed
@@ -103,11 +103,11 @@ class CustomEnv(gym.Env):
             if old_loc != agent.location:
                 self.grid[agent.location[0]][agent.location[1]] = agent
                 self.grid[old_loc[0]][old_loc[1]] = None
-                reward += 0.01
+                reward += 0.2
             else:
-                reward -= 0.01
+                reward -= 0.2
         elif action == 3:
-            reward -= 0.015
+            reward -= 0.1
             if agent.type == ag.Type.Berserker:
                 # Check all surrounding tiles for other agents
                 surrounding_tiles = [
@@ -126,22 +126,23 @@ class CustomEnv(gym.Env):
                     if 0 <= tile[0] < self.grid_size and 0 <= tile[1] < self.grid_size:
                         # Check if an agent is present on this tile
                         a = self.grid[tile[0]][tile[1]]
-                        if a != None and a.team != self.active_team:
-                            a.health -= ag.PROFESSIONS[agent.type].power
-                            # float inaccuracies
-                            if a.health <= 0.001:
-                                reward += 0.03
-                                # Kill the agent
-                                self.grid[tile[0]][tile[1]] = None
-                                # remove from agent list
-                                for deadi in range(len(self.agents[a.team])):
-                                    if self.agents[a.team][deadi].location == tile:
-                                        del self.agents[a.team][deadi]
-                                        if len(self.agents[a.team]) == 0:
-                                            done = True
-                                        break
-                            else:
-                                reward += 0.015
+                        if a != None:
+                            if a.team != self.active_team:
+                                a.health -= ag.PROFESSIONS[agent.type].power
+                                # float inaccuracies
+                                if a.health <= 0.001:
+                                    reward += 0.2
+                                    # Kill the agent
+                                    self.grid[tile[0]][tile[1]] = None
+                                    # remove from agent list
+                                    for deadi in range(len(self.agents[a.team])):
+                                        if self.agents[a.team][deadi].location == tile:
+                                            del self.agents[a.team][deadi]
+                                            if len(self.agents[a.team]) == 0:
+                                                done = True
+                                            break
+                                else:
+                                    reward += 0.1
                             
             else:
                 new_row, new_col = agent.location
@@ -157,21 +158,22 @@ class CustomEnv(gym.Env):
                 if 0 <= new_row < self.grid_size and 0 <= new_col < self.grid_size:
                     # Check if an agent is present on this tile
                     a = self.grid[new_row][new_col]
-                    if a != None and a.team != self.active_team:
-                        a.health -= ag.PROFESSIONS[agent.type].power
-                        if a.health <= 0.001:
-                            reward += 0.03
-                            # Kill the agent
-                            self.grid[new_row][new_col] = None
-                            # remove from agent list
-                            for deadi in range(len(self.agents[a.team])):
-                                if self.agents[a.team][deadi].location == (new_row, new_col):
-                                    del self.agents[a.team][deadi]
-                                    if len(self.agents[a.team]) == 0:
-                                        done = True
-                                    break
-                        else:
-                            reward += 0.015
+                    if a != None:
+                        if a.team != self.active_team:
+                            a.health -= ag.PROFESSIONS[agent.type].power
+                            if a.health <= 0.001:
+                                reward += 0.2
+                                # Kill the agent
+                                self.grid[new_row][new_col] = None
+                                # remove from agent list
+                                for deadi in range(len(self.agents[a.team])):
+                                    if self.agents[a.team][deadi].location == (new_row, new_col):
+                                        del self.agents[a.team][deadi]
+                                        if len(self.agents[a.team]) == 0:
+                                            done = True
+                                        break
+                            else:
+                                reward += 0.1
             
                     
         return self.get_state(), reward, done, False, {}
@@ -222,7 +224,7 @@ class CustomEnv(gym.Env):
             for col in reversed(range(self.grid_size)):
                 if n >= self.num_agents:
                     break
-                a = ag.Agent((row, col), ag.Rotation.Up, agent_type, 0, self.grid_size)
+                a = ag.Agent((row, col), ag.Rotation.Up, agent_type, 1, self.grid_size)
                 self.grid[row][col] = a  # Place the agent in the grid
                 purple_agents.append(a)  # Add the agent to the list of agents
                 n += 1
@@ -269,9 +271,6 @@ class CustomEnv(gym.Env):
                 pygame.draw.line(self.window, color_palette.background, center, end_point, 5)
                 pygame.draw.line(self.window, color_palette.health, (agent.location[1]*cell_size+cell_size/8,agent.location[0]*cell_size+cell_size/12), (agent.location[1]*cell_size+cell_size/8+cell_size/8*6*agent.health/ag.MAX_HEALTH,agent.location[0]*cell_size+cell_size/12), round(cell_size/14))
 
-        # # Draw reward position
-        # pygame.draw.rect(self.window, (0, 255, 0), (self.reward_pos[1] * cell_size, self.reward_pos[0] * cell_size, cell_size, cell_size))
-
         pygame.display.flip()
         self.clock.tick(10)
 
@@ -280,32 +279,19 @@ class CustomEnv(gym.Env):
             pygame.quit()
 
     def get_state(self):
-        # print(f"grid: {self.grid}")
-        # for a in self.agents[0]:
-        #     print(f"yellow agent - Location: {a.location} Health: {a.health} Rotation: {a.rotation}")
-        # for a in self.agents[1]:
-        #     print(f"purple agent - Location: {a.location} Health: {a.health} Rotation: {a.rotation}")
         state = np.zeros((self.state_length,), dtype=np.float32)
         # Agent positions
         for row in range(self.grid_size):
             for column in range(self.grid_size):
                 pos = (row*self.grid_size+column)*ag.AGENT_FIELDS
                 if self.grid[row][column] == None:
-                    state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5] = 0,0,0,0,0,0
+                    state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5], state[pos+6] = 0,0,0,0,0,0,0
                 else:
                     state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5] = self.grid[row][column].normalize()
-
-
-        # Active agent params
-        pos = self.grid_size*self.grid_size*ag.AGENT_FIELDS
-        state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5] = self.agents[self.active_team][self.active_agent].normalize()
-
-        # # Reward positions
-        # state[self.grid_size*self.grid_size*ag.AGENT_FIELDS+ag.AGENT_FIELDS] = self.reward_pos[0]
-        # state[self.grid_size*self.grid_size*ag.AGENT_FIELDS+ag.AGENT_FIELDS+1] = self.reward_pos[1]
+                    state[pos+6] = float(self.agents[self.active_team][self.active_agent].location == (row, column))
 
         # Team's turn
-        state[self.grid_size*self.grid_size*ag.AGENT_FIELDS+ag.AGENT_FIELDS] = self.active_team
+        state[self.grid_size*self.grid_size*ag.AGENT_FIELDS] = self.active_team
 
         return state
     

@@ -46,7 +46,7 @@ num_episodes = 10000
 
 discount_factor = 0.99
 max_steps_per_episode = 1000000
-exploration_rate = 0.5
+exploration_rate = 0.2
 batch_size = 1000
 replay_start_threshold = 50000
 
@@ -54,17 +54,20 @@ replay_start_threshold = 50000
 agent_models = []
 agent_target_models = []
 agent_replay_buffers = []
-# agent_model = QNetwork(num_states, num_actions)
+
+# king_model = QNetwork(num_states, num_actions)
 # agent_target_model = QNetwork(num_states, num_actions)
-# agent_target_model.load_state_dict(agent_model.state_dict())
+# agent_target_model.load_state_dict(king_model.state_dict())
 # agent_target_model.eval()
 # agent_replay_buffer = deque(maxlen=replay_start_threshold)
+
 king_model = QNetwork(num_states, num_actions)
 king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
 king_model.eval()
 agent_target_model = QNetwork(num_states, num_actions)
 agent_target_model.load_state_dict(torch.load(f"{training_dir}agent_target_model.pth"))
 agent_target_model.eval()
+
 for team in range(2):
     agent_models.append(king_model)
     agent_target_models.append(agent_target_model)
@@ -80,7 +83,7 @@ update = 0
 # Step 5: Implement the Q-learning algorithm using the neural network with experience replay
 for epoch in range(epochs):
     for episode in range(num_episodes):
-        state, _ = env.reset()
+        state, _ = env.reset(options={"fair": True})
         episode_buffer = [[] for _ in range(2)]  # Buffer to store experiences in the episode
         winning_team = 0
         for step in range(max_steps_per_episode):
@@ -119,10 +122,10 @@ for epoch in range(epochs):
         if done:
             for team in range(2):
                 if len(episode_buffer[team]) > 0:
-                    m = 100 / len(episode_buffer[team])
-                    bonus = m if team == winning_team else -m
-                    modified_transitions = [(s, a, r + bonus, n, d) for s, a, r, n, d in episode_buffer[team]]
-                    agent_replay_buffers[team].extend(modified_transitions)
+                    # m = max(50 / len(episode_buffer[team]), 0.1)
+                    # bonus = 0.1 if team == winning_team else -0.1
+                    # modified_transitions = [(s, a, r + bonus, n, d) for s, a, r, n, d in episode_buffer[team]]
+                    agent_replay_buffers[team].extend(episode_buffer[team])
             
         # Update the Q-networks using experience replay
         for team in range(2):
