@@ -60,10 +60,12 @@ king_model = QNetwork(num_states, num_actions)
 # king_model.eval()
 
 agent_models = [copy.deepcopy(king_model) for _ in range(2)]
-agent_target_models = [
-    QNetwork(num_states, num_actions).load_state_dict(agent_models[i].state_dict()).eval()
-    for i in range(2)
-]
+agent_target_models = []
+for i in range(2):
+    model = QNetwork(num_states, num_actions)
+    model.load_state_dict(agent_models[i].state_dict())
+    model.eval()
+    agent_target_models.append(model)
 agent_replay_buffers = [deque(maxlen=replay_start_threshold) for _ in range(2)]
 
 optimizer = optim.Adam(king_model.parameters(), lr=0.001)
@@ -173,8 +175,7 @@ for epoch in range(epochs):
     # yellow vs king
     won = [0,0]
     fight_models = [copy.deepcopy(agent_models[0]),copy.deepcopy(king_model)]
-    fight_models[0].eval()
-    fight_models[1].eval()
+    fight_models = [model.eval() for model in fight_models]
     # 100 matches
     for _ in range(max_matches):
         state, _ = env.reset(options={"fair": True})
@@ -209,8 +210,7 @@ for epoch in range(epochs):
         fight_models.append(copy.deepcopy(agent_models[1]))
     else:
         fight_models.append(copy.deepcopy(king_model))
-    fight_models[0].eval()
-    fight_models[1].eval()
+    fight_models = [model.eval() for model in fight_models]
     for _ in range(max_matches):
         state, _ = env.reset(options={"fair": True})
         # cap at 200 steps
@@ -241,14 +241,17 @@ for epoch in range(epochs):
     # Save old king
     if new_king:
         # Use winning model
-        agent_models = [
-            QNetwork(num_states, num_actions).load_state_dict(winning_model.state_dict())
-            for _ in range(2)
-        ]
-        agent_target_models = [
-            QNetwork(num_states, num_actions).load_state_dict(agent_models[i].state_dict()).eval()
-            for i in range(2)
-        ]
+        agent_models = []
+        agent_target_models = []
+        for i in range(2):
+            model = QNetwork(num_states, num_actions)
+            model.load_state_dict(winning_model.state_dict())
+            agent_models.append(model)
+
+            target_model = QNetwork(num_states, num_actions)
+            target_model.load_state_dict(model.state_dict())
+            target_model.eval()
+            agent_target_models.append(target_model)
 
         now = datetime.now()
         formatted_time = now.strftime("%B-%d-%H-%M")
