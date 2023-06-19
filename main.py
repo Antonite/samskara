@@ -5,10 +5,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from custom_env import CustomEnv
-import pygame
 import time
 from collections import deque
 from datetime import datetime
+import copy
 
 training_dir = "training/"
 kings_dir = "training/kings/"
@@ -55,23 +55,20 @@ agent_models = []
 agent_target_models = []
 agent_replay_buffers = []
 
-# king_model = QNetwork(num_states, num_actions)
-# agent_target_model = QNetwork(num_states, num_actions)
-# agent_target_model.load_state_dict(king_model.state_dict())
-# agent_target_model.eval()
-# agent_replay_buffer = deque(maxlen=replay_start_threshold)
-
 king_model = QNetwork(num_states, num_actions)
-king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
-king_model.eval()
-agent_target_model = QNetwork(num_states, num_actions)
-agent_target_model.load_state_dict(torch.load(f"{training_dir}agent_target_model.pth"))
-agent_target_model.eval()
 
-for team in range(2):
-    agent_models.append(king_model)
-    agent_target_models.append(agent_target_model)
-    agent_replay_buffers.append(deque(maxlen=replay_start_threshold))
+# king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
+# king_model.eval()
+
+agent_models.append(copy.deepcopy(king_model) + copy.deepcopy(king_model))
+agent_target_model_yellow = QNetwork(num_states, num_actions)
+agent_target_model_yellow.load_state_dict(agent_models[0].state_dict())
+agent_target_model_yellow.eval()
+agent_target_model_purple = QNetwork(num_states, num_actions)
+agent_target_model_purple.load_state_dict(agent_models[1].state_dict())
+agent_target_model_purple.eval()
+agent_target_models.append(agent_target_model_yellow + agent_target_model_purple)
+agent_replay_buffers.append(deque(maxlen=replay_start_threshold) + deque(maxlen=replay_start_threshold))
 
 optimizer = optim.Adam(king_model.parameters(), lr=0.001)
 criterion = nn.MSELoss()
@@ -179,7 +176,9 @@ for epoch in range(epochs):
     new_king = False
     # yellow vs king
     won = [0,0]
-    fight_models = [agent_models[0],king_model]
+    fight_models = [copy.deepcopy(agent_models[0]),copy.deepcopy(king_model)]
+    fight_models[0].eval()
+    fight_models[1].eval()
     # 100 matches
     for _ in range(max_matches):
         state, _ = env.reset(options={"fair": True})
@@ -209,11 +208,13 @@ for epoch in range(epochs):
     # Winner vs purple
     # set winner
     won = [0,0]
-    fight_models = [agent_models[1]]
+    fight_models = [copy.deepcopy(agent_models[1])]
     if won[0] >= won[1]:
-        fight_models.append(agent_models[0])
+        fight_models.append(copy.deepcopy(agent_models[1]))
     else:
-        fight_models.append(king_model)
+        fight_models.append(copy.deepcopy(king_model))
+    fight_models[0].eval()
+    fight_models[1].eval()
     for _ in range(max_matches):
         state, _ = env.reset(options={"fair": True})
         # cap at 200 steps
@@ -239,24 +240,34 @@ for epoch in range(epochs):
         print(f"{winner} beat purple {won[1]} - {won[0]}")
         winning_model = fight_models[1]
     
-    # Use winning model
-    agent_models = []
-    agent_target_models = []
-    for team in range(2):
-        agent_models.append(winning_model)
-        agent_target_model = QNetwork(num_states, num_actions)
-        agent_target_model.load_state_dict(winning_model.state_dict())
-        agent_target_model.eval()
-        agent_target_models.append(agent_target_model)
+
 
     # Save old king
     if new_king:
+        # Use winning model
+        agent_models = []
+        agent_target_models = []
+
+        new_model = QNetwork(num_states, num_actions)
+        new_model.load_state_dict(winning_model.state_dict())
+        new_model_copy = QNetwork(num_states, num_actions)
+        new_model_copy.load_state_dict(winning_model.state_dict())
+        agent_models.append(new_model + new_model_copy)
+        agent_target_model = QNetwork(num_states, num_actions)
+        agent_target_model.load_state_dict(new_model.state_dict())
+        agent_target_model.eval()
+        agent_target_model_copy = QNetwork(num_states, num_actions)
+        agent_target_model_copy.load_state_dict(new_model_copy.state_dict())
+        agent_target_model_copy.eval()
+        agent_target_models.append(agent_target_model,agent_target_model_copy)
+
         now = datetime.now()
         formatted_time = now.strftime("%B-%d-%H-%M")
         torch.save(king_model.state_dict(), f"{kings_dir}agent_model{formatted_time}.pth")
-        king_model = winning_model
+        king_model = copy.deepcopy(winning_model)
 
-    # Save current state
-    torch.save(winning_model.state_dict(), f"{training_dir}agent_model.pth")
-    torch.save(agent_target_model.state_dict(), f"{training_dir}agent_target_model.pth")
+        # Save current state
+        torch.save(king_model.state_dict(), f"{training_dir}agent_model.pth")
+
+
     

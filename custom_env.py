@@ -45,10 +45,8 @@ class CustomEnv(gym.Env):
         # Update rotation
         if action == 0:
             agent.rotation = ag.Rotation((agent.rotation.value - 1) % 4)
-            reward = -0.05
         elif action == 1:
             agent.rotation = ag.Rotation((agent.rotation.value + 1) % 4)
-            reward = -0.05
         elif action == 2:
             # Determine the maximum number of tiles the agent can move
             speed = ag.PROFESSIONS[agent.type].speed
@@ -131,7 +129,7 @@ class CustomEnv(gym.Env):
                                 a.health -= ag.PROFESSIONS[agent.type].power
                                 # float inaccuracies
                                 if a.health <= 0.001:
-                                    reward += 0.2
+                                    reward += 0.5
                                     # Kill the agent
                                     self.grid[tile[0]][tile[1]] = None
                                     # remove from agent list
@@ -162,7 +160,7 @@ class CustomEnv(gym.Env):
                         if a.team != self.active_team:
                             a.health -= ag.PROFESSIONS[agent.type].power
                             if a.health <= 0.001:
-                                reward += 0.2
+                                reward += 0.5
                                 # Kill the agent
                                 self.grid[new_row][new_col] = None
                                 # remove from agent list
