@@ -42,17 +42,16 @@ class QNetwork(nn.Module):
 
 # Step 4: Define the Q-learning parameters
 epochs = 1000
-num_episodes = 10000
+num_episodes = 5000
 
 discount_factor = 0.99
-max_steps_per_episode = 1000000
+max_steps_per_episode = 100000
 exploration_rate = 0.2
 batch_size = 1000
 replay_start_threshold = 50000
 
 
-agent_models = []
-agent_target_models = []
+
 agent_replay_buffers = []
 
 king_model = QNetwork(num_states, num_actions)
@@ -60,15 +59,12 @@ king_model = QNetwork(num_states, num_actions)
 # king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
 # king_model.eval()
 
-agent_models.append(copy.deepcopy(king_model) + copy.deepcopy(king_model))
-agent_target_model_yellow = QNetwork(num_states, num_actions)
-agent_target_model_yellow.load_state_dict(agent_models[0].state_dict())
-agent_target_model_yellow.eval()
-agent_target_model_purple = QNetwork(num_states, num_actions)
-agent_target_model_purple.load_state_dict(agent_models[1].state_dict())
-agent_target_model_purple.eval()
-agent_target_models.append(agent_target_model_yellow + agent_target_model_purple)
-agent_replay_buffers.append(deque(maxlen=replay_start_threshold) + deque(maxlen=replay_start_threshold))
+agent_models = [copy.deepcopy(king_model) for _ in range(2)]
+agent_target_models = [
+    QNetwork(num_states, num_actions).load_state_dict(agent_models[i].state_dict()).eval()
+    for i in range(2)
+]
+agent_replay_buffers = [deque(maxlen=replay_start_threshold) for _ in range(2)]
 
 optimizer = optim.Adam(king_model.parameters(), lr=0.001)
 criterion = nn.MSELoss()
@@ -245,21 +241,14 @@ for epoch in range(epochs):
     # Save old king
     if new_king:
         # Use winning model
-        agent_models = []
-        agent_target_models = []
-
-        new_model = QNetwork(num_states, num_actions)
-        new_model.load_state_dict(winning_model.state_dict())
-        new_model_copy = QNetwork(num_states, num_actions)
-        new_model_copy.load_state_dict(winning_model.state_dict())
-        agent_models.append(new_model + new_model_copy)
-        agent_target_model = QNetwork(num_states, num_actions)
-        agent_target_model.load_state_dict(new_model.state_dict())
-        agent_target_model.eval()
-        agent_target_model_copy = QNetwork(num_states, num_actions)
-        agent_target_model_copy.load_state_dict(new_model_copy.state_dict())
-        agent_target_model_copy.eval()
-        agent_target_models.append(agent_target_model,agent_target_model_copy)
+        agent_models = [
+            QNetwork(num_states, num_actions).load_state_dict(winning_model.state_dict())
+            for _ in range(2)
+        ]
+        agent_target_models = [
+            QNetwork(num_states, num_actions).load_state_dict(agent_models[i].state_dict()).eval()
+            for i in range(2)
+        ]
 
         now = datetime.now()
         formatted_time = now.strftime("%B-%d-%H-%M")
