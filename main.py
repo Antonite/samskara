@@ -9,11 +9,13 @@ import time
 from collections import deque
 from datetime import datetime
 import copy
+import os
 
 training_dir = "training/"
 kings_dir = "training/kings/"
 
 # Step 1: Set the device to CUDA if available
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.set_default_tensor_type(torch.cuda.FloatTensor if device.type == "cuda" else torch.FloatTensor)
 
@@ -42,11 +44,11 @@ class QNetwork(nn.Module):
 
 # Step 4: Define the Q-learning parameters
 epochs = 1000
-num_episodes = 5000
+num_episodes = 10000
 
 discount_factor = 0.99
 max_steps_per_episode = 100000
-exploration_rate = 0.2
+exploration_rate = 0.3
 batch_size = 1000
 replay_start_threshold = 50000
 
@@ -78,7 +80,8 @@ update = 0
 # Step 5: Implement the Q-learning algorithm using the neural network with experience replay
 for epoch in range(epochs):
     for episode in range(num_episodes):
-        state, _ = env.reset(options={"fair": True})
+        # state, _ = env.reset(options={"fair": True})
+        state, _ = env.reset()
         episode_buffer = [[] for _ in range(2)]  # Buffer to store experiences in the episode
         winning_team = 0
         for step in range(max_steps_per_episode):
@@ -96,10 +99,10 @@ for epoch in range(epochs):
                     env.set_active(agent, team)
                     new_state, reward, done, _, _ = env.step(action)
 
-                    total_rewards[team] += reward
-
                     # Store the experience in the episode buffer
-                    episode_buffer[team].append((state, action, reward, new_state, done))
+                    if reward != 0:
+                        total_rewards[team] += reward
+                        episode_buffer[team].append((state, action, reward, new_state, done))
 
                     state = new_state
                     
