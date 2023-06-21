@@ -9,7 +9,6 @@ import time
 from collections import deque
 from datetime import datetime
 import copy
-import os
 
 training_dir = "training/"
 kings_dir = "training/kings/"
@@ -48,18 +47,15 @@ num_episodes = 10000
 
 discount_factor = 0.99
 max_steps_per_episode = 100000
-exploration_rate = 0.3
+exploration_rate = 0.5
 batch_size = 1000
 replay_start_threshold = 50000
-
-
 
 agent_replay_buffers = []
 
 king_model = QNetwork(num_states, num_actions)
 
-# king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
-# king_model.eval()
+king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
 
 agent_models = [copy.deepcopy(king_model) for _ in range(2)]
 agent_target_models = []
@@ -70,8 +66,8 @@ for i in range(2):
     agent_target_models.append(model)
 agent_replay_buffers = [deque(maxlen=replay_start_threshold) for _ in range(2)]
 
-optimizer = optim.Adam(king_model.parameters(), lr=0.001)
-criterion = nn.MSELoss()
+optimizers = [optim.Adam(agent_models[i].parameters(), lr=0.005) for i in range(2)]
+criterions = [nn.MSELoss(),nn.MSELoss()]
 
 start_time = time.time()
 total_rewards = [0.0] * 2
@@ -89,9 +85,11 @@ for epoch in range(epochs):
             for team in range(2):
                 # for each agent
                 for agent in range(env.team_len(team)):
+                    # exploration_threshold = 1
                     exploration_threshold = np.random.uniform(0, 1)
                     if exploration_threshold > exploration_rate:
                         with torch.no_grad():
+                            # vv = agent_models[team](torch.tensor(state))
                             action = torch.argmax(agent_models[team](torch.tensor(state))).item()
                     else:
                         action = env.action_space.sample()
@@ -151,10 +149,10 @@ for epoch in range(epochs):
                 q_values[range(batch_size), actions] = target_values
 
                 # Compute the loss and optimize the model
-                optimizer.zero_grad()
-                loss = criterion(q_values, agent_models[team](states))
+                optimizers[team].zero_grad()
+                loss = criterions[team](q_values, agent_models[team](states))
                 loss.backward()
-                optimizer.step()
+                optimizers[team].step()
 
                 # Update the target networks periodically
                 if update == 10:
@@ -207,13 +205,13 @@ for epoch in range(epochs):
     
     # Winner vs purple
     # set winner
-    won = [0,0]
     fight_models = [copy.deepcopy(agent_models[1])]
     if won[0] >= won[1]:
-        fight_models.append(copy.deepcopy(agent_models[1]))
+        fight_models.append(copy.deepcopy(agent_models[0]))
     else:
         fight_models.append(copy.deepcopy(king_model))
     fight_models = [model.eval() for model in fight_models]
+    won = [0,0]
     for _ in range(max_matches):
         state, _ = env.reset(options={"fair": True})
         # cap at 200 steps
@@ -239,7 +237,6 @@ for epoch in range(epochs):
         print(f"{winner} beat purple {won[1]} - {won[0]}")
         winning_model = fight_models[1]
     
-
 
     # Save old king
     if new_king:

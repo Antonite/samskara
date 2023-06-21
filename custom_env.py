@@ -105,7 +105,7 @@ class CustomEnv(gym.Env):
             else:
                 reward -= 0.2
         elif action == 3:
-            reward -= 0.1
+            reward -= 0.2
             if agent.type == ag.Type.Berserker:
                 # Check all surrounding tiles for other agents
                 surrounding_tiles = [
@@ -129,7 +129,7 @@ class CustomEnv(gym.Env):
                                 a.health -= ag.PROFESSIONS[agent.type].power
                                 # float inaccuracies
                                 if a.health <= 0.001:
-                                    reward += 0.5
+                                    reward += 1
                                     # Kill the agent
                                     self.grid[tile[0]][tile[1]] = None
                                     # remove from agent list
@@ -140,7 +140,7 @@ class CustomEnv(gym.Env):
                                                 done = True
                                             break
                                 else:
-                                    reward += 0.1
+                                    reward += 0.3
                             
             else:
                 new_row, new_col = agent.location
@@ -160,7 +160,7 @@ class CustomEnv(gym.Env):
                         if a.team != self.active_team:
                             a.health -= ag.PROFESSIONS[agent.type].power
                             if a.health <= 0.001:
-                                reward += 0.5
+                                reward += 1
                                 # Kill the agent
                                 self.grid[new_row][new_col] = None
                                 # remove from agent list
@@ -171,7 +171,7 @@ class CustomEnv(gym.Env):
                                             done = True
                                         break
                             else:
-                                reward += 0.1
+                                reward += 0.3
             
                     
         return self.get_state(), reward, done, False, {}
@@ -191,7 +191,7 @@ class CustomEnv(gym.Env):
         for team in range(2):
             agents = []
             for agent in range(int(team*l/2), int(l/2+team*l/2)):
-                agent_type = random.choice([ag.Type.Runner, ag.Type.Berserker])
+                agent_type = ag.Type.Berserker
                 a = ag.Agent(agent_positions[agent], ag.Rotation.Down if team == 0 else ag.Rotation.Up, agent_type, team, self.grid_size)
                 agents.append(a)
                 self.grid[agent_positions[agent][0]][agent_positions[agent][1]] = a
@@ -203,7 +203,8 @@ class CustomEnv(gym.Env):
         self.grid = [[None for _ in range(self.grid_size)] for _ in range(self.grid_size)]
         self.agents = []
 
-        agent_type = random.choice([ag.Type.Runner, ag.Type.Berserker])
+        # agent_type = random.choice([ag.Type.Runner, ag.Type.Berserker])
+        agent_type = ag.Type.Berserker
         # Yellow team
         yellow_agents = []
         n = 0
