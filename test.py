@@ -19,14 +19,16 @@ class QNetwork(nn.Module):
     def __init__(self, num_states, num_actions):
         super(QNetwork, self).__init__()
         hidden_size = round(num_states * 2/3 + num_actions)
-        self.fc1 = nn.Linear(num_states, num_actions)
-        self.fc2 = nn.Linear(num_actions, num_actions)
-        self.fc3 = nn.Linear(num_actions, num_actions)
+        self.fc1 = nn.Linear(num_states, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, hidden_size)
+        self.fc4 = nn.Linear(hidden_size, num_actions)
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = torch.relu(self.fc3(x))
+        x = self.fc4(x)
         return x
 
 king_model = QNetwork(num_states, num_actions)
@@ -39,6 +41,7 @@ king_model.eval()
 done = False
 while not done:
     state, _ = env.reset(options={"fair": True})
+    # state, _ = env.reset()
     total_rewards = [0.0] * 2
     env.render()
     # 100 steps at a time
@@ -46,7 +49,7 @@ while not done:
         for team in range(2):
             for agent in range(env.team_len(team)):
                 env.set_active(agent,team)
-                # v = king_model(torch.tensor(state))
+                v = king_model(torch.tensor(state))
                 action = torch.argmax(king_model(torch.tensor(state))).item()
                 state, reward, _, _, _ = env.step(action)
                 env.set_last_action(action)

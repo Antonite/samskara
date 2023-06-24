@@ -101,11 +101,12 @@ class CustomEnv(gym.Env):
             if old_loc != agent.location:
                 self.grid[agent.location[0]][agent.location[1]] = agent
                 self.grid[old_loc[0]][old_loc[1]] = None
-                reward += 0.2
+                # reward += 0.05
+                reward += 0.05
             else:
-                reward -= 0.2
+                reward -= 1
         elif action == 3:
-            reward -= 0.2
+            reward -= 1
             if agent.type == ag.Type.Berserker:
                 # Check all surrounding tiles for other agents
                 surrounding_tiles = [
@@ -129,7 +130,8 @@ class CustomEnv(gym.Env):
                                 a.health -= ag.PROFESSIONS[agent.type].power
                                 # float inaccuracies
                                 if a.health <= 0.001:
-                                    reward += 1
+                                    # reward += 0
+                                    reward += 3
                                     # Kill the agent
                                     self.grid[tile[0]][tile[1]] = None
                                     # remove from agent list
@@ -140,7 +142,8 @@ class CustomEnv(gym.Env):
                                                 done = True
                                             break
                                 else:
-                                    reward += 0.3
+                                    # reward += 0
+                                    reward += 1
                             
             else:
                 new_row, new_col = agent.location
@@ -160,7 +163,8 @@ class CustomEnv(gym.Env):
                         if a.team != self.active_team:
                             a.health -= ag.PROFESSIONS[agent.type].power
                             if a.health <= 0.001:
-                                reward += 1
+                                reward += 3
+                                # reward += 0
                                 # Kill the agent
                                 self.grid[new_row][new_col] = None
                                 # remove from agent list
@@ -171,7 +175,8 @@ class CustomEnv(gym.Env):
                                             done = True
                                         break
                             else:
-                                reward += 0.3
+                                reward += 1
+                                # reward += 0
             
                     
         return self.get_state(), reward, done, False, {}
