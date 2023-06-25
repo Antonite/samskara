@@ -11,7 +11,7 @@ class Profession():
     self.range = range
 
 PROFESSIONS = {}
-PROFESSIONS[Type.FIGHTER] = Profession(20,100,1)
+PROFESSIONS[Type.FIGHTER] = Profession(20,100,1,1)
 
 AGENT_FIELDS = 7
 # MAX_TYPES = len(Type) - 1

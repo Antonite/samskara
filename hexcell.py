@@ -8,24 +8,22 @@ class Direction(Enum):
     BOTTOM_RIGHT = 4
     BOTTOM_LEFT = 5
 
-id_counter = 0
-
-
 class HexCell:
-    def __init__(self, data=None):
+    def __init__(self, id, data=None):
         self.data = data
-        self.id = id_counter
-        id_counter += 1
+        self.id = id
         self.neighbors = {direction: None for direction in Direction}
 
 class HexGrid:
     def __init__(self):
         self.size = 5
         self.map = {}
+        self.id_counter = 0
         self.initialize_grid()
 
     def new_hex_cell(self):
-        cell = HexCell()
+        cell = HexCell(self.id_counter)
+        self.id_counter += 1
         self.map[cell.id] = cell
         return cell
 

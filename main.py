@@ -7,8 +7,6 @@ import torch.optim as optim
 from custom_env import CustomEnv
 import time
 from collections import deque
-from datetime import datetime
-import copy
 
 training_dir = "training/"
 kings_dir = "training/kings/"
@@ -20,7 +18,7 @@ torch.set_default_tensor_type(torch.cuda.FloatTensor if device.type == "cuda" el
 
 
 # Step 2: Create the environment
-env = gym.make('CustomEnv-v0', num_agents=3, grid_size=5)  # Set the number of agents
+env = gym.make('CustomEnv-v0', num_agents=1)  # Set the number of agents
 
 # Step 3: Define the neural network model for each agent
 num_states = env.observation_space.shape[0]
@@ -45,7 +43,7 @@ class QNetwork(nn.Module):
 
 # Step 4: Define the Q-learning parameters
 epochs = 1000
-num_episodes = 10000
+num_episodes = 1000
 
 discount_factor = 0.99
 max_steps_per_episode = 100000
@@ -57,7 +55,7 @@ agent_replay_buffers = []
 
 king_model = QNetwork(num_states, num_actions)
 
-king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
+# king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
 
 # agent_models = [copy.deepcopy(king_model) for _ in range(2)]
 # agent_target_models = []
@@ -77,8 +75,6 @@ agent_target_model.eval()
 agent_replay_buffer = deque(maxlen=replay_start_threshold)
 optimizer = optim.Adam(king_model.parameters(), lr=0.0001)
 criterion = nn.MSELoss()
-
-
 
 start_time = time.time()
 total_rewards = [0.0] * 2
@@ -111,14 +107,16 @@ for epoch in range(epochs):
                     # Store the experience in the episode buffer
                     if reward != 0:
                         total_rewards[team] += reward
-                        # episode_buffer[team].append((state, action, reward, new_state, done))
-                        agent_replay_buffer.append((state, action, reward, new_state, done))
-
+                        episode_buffer[team].append((state, action, reward, new_state, done))
+                        # agent_replay_buffer.append((state, action, reward, new_state, done))
 
                     state = new_state
                     
                     if done:
                         winning_team = team
+                        # punish the last move of losing team
+                        s, a, r, n, d = episode_buffer[(team + 1) % 2][-1]
+                        episode_buffer[(team + 1) % 2][-1] = (s, a, r - 1, n, d)
                         break
                 if done:
                     break
@@ -128,8 +126,9 @@ for epoch in range(epochs):
         total_steps += step+1
 
         # Assign retroactive rewards at the end of the episode
-        # if done:
-        #     for team in range(2):
+        if done:
+            for team in range(2):
+                agent_replay_buffer.extend(episode_buffer[team])
                 # if len(episode_buffer[team]) > 0:
                     # m = max(50 / len(episode_buffer[team]), 0.1)
                     # bonus = 1 if team == winning_team else -1

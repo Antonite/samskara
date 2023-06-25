@@ -11,6 +11,10 @@ class CustomEnv(gym.Env):
     def __init__(self, num_agents=1):
         super(CustomEnv, self).__init__()
 
+        # rewards
+        self.REWARD_FOR_INVALID_ACTION = -1
+        self.REWARD_FOR_KILL = 1
+
         # Define the dimensions of the field
         self.num_cells = 61
 
@@ -67,14 +71,20 @@ class CustomEnv(gym.Env):
 
     def get_state(self):
         state = np.zeros((self.state_length,), dtype=np.float32)
+        # set active agent
+        self.agents[self.active_team][self.active_agent].is_active = True
+
         # Agent positions 
         for team in range(2):
             for agent in self.agents[team]:
-                pos = agent.id*ag.AGENT_FIELDS
+                pos = agent.cell_id*ag.AGENT_FIELDS
                 state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5], state[pos+6] = agent.normalize()
 
         # Team's turn
         state[self.total_agent_fields] = self.active_team
+
+        # unset active agent
+        self.agents[self.active_team][self.active_agent].is_active = False
 
         return state
 
@@ -203,7 +213,7 @@ class CustomEnv(gym.Env):
         reward = 0
         done = False
         agent = self.agents[self.active_team][self.active_agent]
-        current_cell = self.grid.map[agent.id]
+        current_cell = self.grid.map[agent.cell_id]
         next_cell = None
         match action:
             # LEFT
@@ -226,29 +236,36 @@ class CustomEnv(gym.Env):
                 next_cell = current_cell.neighbors[hexcell.Direction.BOTTOM_LEFT]
 
         # Invalid action
-        if next_cell == None or next_cell.data != None:
-            reward -= 1
+        if next_cell == None:
+            reward = self.REWARD_FOR_INVALID_ACTION
         else:
             # ---- MOVE ----
             if action < 6:
-                reward += 0.05
-                next_cell.data = agent
-                agent.id = next_cell.id
-                current_cell.data = None
+                # cannot move onto occupied tile
+                if next_cell.data != None:
+                    reward = self.REWARD_FOR_INVALID_ACTION
+                else:
+                    next_cell.data = agent
+                    agent.cell_id = next_cell.id
+                    current_cell.data = None
             # ---- ATTACK ----
             else:
-                next_cell.data.health -= agent.power
-                # dead
-                if next_cell.data.health <= 0.001:
-                    reward += 1
-                    # remove from agent list
-                    for deadi in range(len(self.agents[next_cell.data.team])):
-                        if self.agents[next_cell.data.team][deadi].id == next_cell.id:
-                            del self.agents[next_cell.data.team][deadi]
-                            if len(self.agents[next_cell.data.team]) == 0:
-                                done = True
-                            break
-                    next_cell.data = None
+                # cannot attack empty tile
+                if next_cell.data == None:
+                    reward = self.REWARD_FOR_INVALID_ACTION
+                else:
+                    next_cell.data.health -= agent.power
+                    # dead
+                    if next_cell.data.health <= 0.001:
+                        reward = self.REWARD_FOR_KILL
+                        # remove from agent list
+                        for deadi in range(len(self.agents[next_cell.data.team])):
+                            if self.agents[next_cell.data.team][deadi].cell_id == next_cell.id:
+                                del self.agents[next_cell.data.team][deadi]
+                                if len(self.agents[next_cell.data.team]) == 0:
+                                    done = True
+                                break
+                        next_cell.data = None
             
                     
         return self.get_state(), reward, done, False, {}
