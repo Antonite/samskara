@@ -10,6 +10,7 @@ class Direction(Enum):
 
 id_counter = 0
 
+
 class HexCell:
     def __init__(self, data=None):
         self.data = data
@@ -20,9 +21,13 @@ class HexCell:
 class HexGrid:
     def __init__(self):
         self.size = 5
-        self.top_left_corner = None
-        self.bottom_right_corner = None
+        self.map = {}
         self.initialize_grid()
+
+    def new_hex_cell(self):
+        cell = HexCell()
+        self.map[cell.id] = cell
+        return cell
 
     def initialize_grid(self):
         # top half
@@ -34,11 +39,7 @@ class HexGrid:
             current_row = []
             lastCell = None
             for col in range(self.size + row):
-                cell = HexCell()
-                # remember top left corner
-                if row == 0 and col == 0:
-                    self.top_left_corner = cell
-
+                cell = self.new_hex_cell()
                 # connect to top rows
                 # nothing to do for top row
                 if row > 0:
@@ -70,11 +71,7 @@ class HexGrid:
             current_row = []
             lastCell = None
             for col in range(self.size*2 - 2 - (row - self.size)):
-                cell = HexCell()
-                # remember bottom right corner
-                if row == self.size*2 - 2 and col == self.size - 1:
-                    self.bottom_right_corner = cell
-
+                cell = self.new_hex_cell()
                 # connect to top rows
                 # top left
                 top_left_cell = last_row[col]
