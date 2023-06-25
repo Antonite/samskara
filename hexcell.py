@@ -8,16 +8,18 @@ class Direction(Enum):
     BOTTOM_RIGHT = 4
     BOTTOM_LEFT = 5
 
+id_counter = 0
+
 class HexCell:
-    def __init__(self, row, col, data=None):
+    def __init__(self, data=None):
         self.data = data
-        self.row = row
-        self.col = col
+        self.id = id_counter
+        id_counter += 1
         self.neighbors = {direction: None for direction in Direction}
 
 class HexGrid:
-    def __init__(self, size):
-        self.size = size
+    def __init__(self):
+        self.size = 5
         self.top_left_corner = None
         self.bottom_right_corner = None
         self.initialize_grid()
@@ -26,12 +28,13 @@ class HexGrid:
         # top half
         last_row = []
         current_row = []
+        id = 0
         for row in range(0,self.size):
             last_row = current_row
             current_row = []
             lastCell = None
             for col in range(self.size + row):
-                cell = HexCell(row, col)
+                cell = HexCell()
                 # remember top left corner
                 if row == 0 and col == 0:
                     self.top_left_corner = cell
@@ -67,7 +70,7 @@ class HexGrid:
             current_row = []
             lastCell = None
             for col in range(self.size*2 - 2 - (row - self.size)):
-                cell = HexCell(row + self.size - 1, col)
+                cell = HexCell()
                 # remember bottom right corner
                 if row == self.size*2 - 2 and col == self.size - 1:
                     self.bottom_right_corner = cell

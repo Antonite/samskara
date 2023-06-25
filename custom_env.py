@@ -5,14 +5,15 @@ import pygame
 import random
 import resources.colors as color_palette 
 import agent as ag
+import hexcell as hexcell
 
 
 class CustomEnv(gym.Env):
-    def __init__(self, num_agents=1, grid_size=3):
+    def __init__(self, num_agents=1):
         super(CustomEnv, self).__init__()
 
-        # Define the dimensions of the grid
-        self.grid_size = grid_size
+        # Define the dimensions of the field
+        self.num_cells = 61
 
         # Number of agents per team
         self.num_agents = num_agents
@@ -21,7 +22,6 @@ class CustomEnv(gym.Env):
         self.active_agent = 0 # index
         self.active_team = 0 # index
         self.agents = []
-        self.grid = []
         
         # Render
         self.window_size = 768
@@ -29,14 +29,144 @@ class CustomEnv(gym.Env):
         self.clock = None
         self.last_action = 0
 
-        # Define the possible actions (turn left, turn right, move, attack)
-        self.action_space = spaces.Discrete(4)
+        # Define the possible actions
+        # ---- MOVE ----
+        # LEFT = 0
+        # TOP_LEFT = 1
+        # TOP_RIGHT = 2
+        # RIGHT = 3
+        # BOTTOM_RIGHT = 4
+        # BOTTOM_LEFT = 5
+        # ---- ATTACK ----
+        # LEFT = 6
+        # TOP_LEFT = 7
+        # TOP_RIGHT = 8
+        # RIGHT = 9
+        # BOTTOM_RIGHT = 10
+        # BOTTOM_LEFT = 11
+        self.action_space = spaces.Discrete(12)
         # Define the observation space (grid size * agent parameters + team's turn)
-        self.state_length = self.grid_size*self.grid_size*ag.AGENT_FIELDS+1
+        self.total_agent_fields = self.num_cells*ag.AGENT_FIELDS
+        self.state_length = self.total_agent_fields+1
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.state_length,), dtype=np.float32)
 
         # Initialize the agent and reward positions
         self.reset()
+
+    # used to render
+    def set_last_action(self, action):
+        self.last_action = action
+
+    # used to figure out who to calculate steps for
+    def set_active(self, agent, team):
+        self.active_team = team
+        self.active_agent = agent
+
+    # used by learning algorithm
+    def team_len(self, team):
+        return len(self.agents[team])
+
+    def get_state(self):
+        state = np.zeros((self.state_length,), dtype=np.float32)
+        # Agent positions 
+        for team in range(2):
+            for agent in self.agents[team]:
+                pos = agent.id*ag.AGENT_FIELDS
+                state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5], state[pos+6] = agent.normalize()
+
+        # Team's turn
+        state[self.total_agent_fields] = self.active_team
+
+        return state
+
+    def reset(self, seed: int | None = None, options: dict[str, object()] | None = None):
+        super().reset()
+        if options != None and options["fair"]:
+            return self.fair_reset()
+
+        self.grid = hexcell.HexGrid()
+        self.agents = []
+
+        agent_type = ag.Type.FIGHTER
+        nextCells = [self.random_cell(),self.random_cell()]
+        for team in range(2):
+            new_team = []
+            for _ in range(self.num_agents):
+                a = ag.Agent(nextCells[team].id,agent_type,team,ag.PROFESSIONS[agent_type].health,ag.PROFESSIONS[agent_type].power,ag.PROFESSIONS[agent_type].speed,ag.PROFESSIONS[agent_type].range)
+                nextCells[team].data = a
+                new_team.append(a)
+                nextCells[team] = self.random_cell()
+            self.agents.append(new_team)
+
+        return self.get_state(), {}
+    
+    def random_cell(self):
+        i = 0
+        current_cell = random.choice([self.grid.top_left_corner, self.grid.bottom_right_corner])
+        while i < 20 or current_cell.data != None:
+            dir = random.choice([d for d in hexcell.Direction])
+            current_cell = current_cell.neighbors[dir]
+            i += 1
+        return current_cell
+
+    def fair_reset(self):
+        self.grid = hexcell.HexGrid()
+        self.agents = []
+
+        # agent_type = random.choice([ag.Type.Runner, ag.Type.Berserker])
+        agent_type = ag.Type.FIGHTER
+        nextCells = [self.grid.top_left_corner,self.grid.bottom_right_corner]
+        for team in range(2):
+            new_team = []
+            direction = hexcell.Direction.RIGHT if team == 0 else hexcell.Direction.LEFT
+            for _ in range(self.num_agents):
+                a = ag.Agent(nextCells[team].id,agent_type,team,ag.PROFESSIONS[agent_type].health,ag.PROFESSIONS[agent_type].power,ag.PROFESSIONS[agent_type].speed,ag.PROFESSIONS[agent_type].range)
+                nextCells[team].data = a
+                new_team.append(a)
+                nextCells[team] = nextCells[team].neighbors[direction]
+            self.agents.append(new_team)
+
+        return self.get_state(), {}
+
+    def render(self):
+        if self.window is None:
+            pygame.init()
+            self.window = pygame.display.set_mode((self.window_size, self.window_size))
+            pygame.display.set_caption("CustomEnv")
+            self.clock = pygame.time.Clock()
+
+        self.window.fill(color_palette.background)
+
+        cell_size = self.window_size // self.grid_size
+
+        # Draw grid lines
+        for x in range(0, self.window_size, cell_size):
+            pygame.draw.line(self.window, (90, 90, 90), (x, 0), (x, self.window_size))
+        for y in range(0, self.window_size, cell_size):
+            pygame.draw.line(self.window, (90, 90, 90), (0, y), (self.window_size, y))
+
+        # Draw agent positions
+        for team in range(2):
+            for i in range(len(self.agents[team])):
+                agent = self.agents[team][i]
+                center = ((agent.location[1]+0.5)*cell_size,(agent.location[0]+0.5)*cell_size)
+                if agent.rotation == ag.Rotation.Up:
+                    end_point = (center[0], center[1] - (cell_size / 3))
+                elif agent.rotation == ag.Rotation.Down:
+                    end_point = (center[0], center[1] + (cell_size / 3))
+                elif agent.rotation == ag.Rotation.Left:
+                    end_point = (center[0] - (cell_size / 3), center[1])
+                else:
+                    end_point = (center[0] + (cell_size / 3), center[1])
+                
+                if i == self.active_agent and team == self.active_team and self.last_action == 3:
+                    pygame.draw.rect(self.window, (200, 17, 17), (agent.location[1] * cell_size, agent.location[0] * cell_size, cell_size, cell_size))
+                pygame.draw.circle(self.window, color_palette.team_colors[team], center, cell_size / 3)
+                pygame.draw.line(self.window, color_palette.background, center, end_point, 5)
+                pygame.draw.line(self.window, color_palette.health, (agent.location[1]*cell_size+cell_size/8,agent.location[0]*cell_size+cell_size/12), (agent.location[1]*cell_size+cell_size/8+cell_size/8*6*agent.health/ag.MAX_HEALTH,agent.location[0]*cell_size+cell_size/12), round(cell_size/14))
+
+        pygame.display.flip()
+        self.clock.tick(10)
 
     def step(self, action):
         reward = 0
@@ -180,134 +310,6 @@ class CustomEnv(gym.Env):
             
                     
         return self.get_state(), reward, done, False, {}
-
-
-    def reset(self, seed: int | None = None, options: dict[str, object()] | None = None):
-        super().reset()
-        if options != None and options["fair"]:
-            return self.fair_reset()
-
-        self.grid = [[None for _ in range(self.grid_size)] for _ in range(self.grid_size)]
-        self.agents = []
-
-        valid_positions = ([(i, j) for i in range(self.grid_size) for j in range(self.grid_size)])
-        agent_positions = random.sample(valid_positions, k=self.num_agents*2)
-        l = len(agent_positions)
-        for team in range(2):
-            agents = []
-            for agent in range(int(team*l/2), int(l/2+team*l/2)):
-                agent_type = ag.Type.Berserker
-                a = ag.Agent(agent_positions[agent], ag.Rotation.Down if team == 0 else ag.Rotation.Up, agent_type, team, self.grid_size)
-                agents.append(a)
-                self.grid[agent_positions[agent][0]][agent_positions[agent][1]] = a
-            self.agents.append(agents)              
-
-        return self.get_state(), {}
-    
-    def fair_reset(self):
-        self.grid = [[None for _ in range(self.grid_size)] for _ in range(self.grid_size)]
-        self.agents = []
-
-        # agent_type = random.choice([ag.Type.Runner, ag.Type.Berserker])
-        agent_type = ag.Type.Berserker
-        # Yellow team
-        yellow_agents = []
-        n = 0
-        for row in range(self.grid_size // 2):
-            for col in range(self.grid_size):
-                if n >= self.num_agents:
-                    break
-                a = ag.Agent((row, col), ag.Rotation.Down, agent_type, 0, self.grid_size)
-                self.grid[row][col] = a  # Place the agent in the grid
-                yellow_agents.append(a)  # Add the agent to the list of agents
-                n += 1
-        # Purple team
-        purple_agents = []
-        n = 0
-        for row in reversed(range(self.grid_size // 2, self.grid_size)):
-            for col in reversed(range(self.grid_size)):
-                if n >= self.num_agents:
-                    break
-                a = ag.Agent((row, col), ag.Rotation.Up, agent_type, 1, self.grid_size)
-                self.grid[row][col] = a  # Place the agent in the grid
-                purple_agents.append(a)  # Add the agent to the list of agents
-                n += 1
-
-        self.agents.append(yellow_agents)
-        self.agents.append(purple_agents)
-
-        return self.get_state(), {}
-
-    def render(self):
-        if self.window is None:
-            pygame.init()
-            self.window = pygame.display.set_mode((self.window_size, self.window_size))
-            pygame.display.set_caption("CustomEnv")
-            self.clock = pygame.time.Clock()
-
-        self.window.fill(color_palette.background)
-
-        cell_size = self.window_size // self.grid_size
-
-        # Draw grid lines
-        for x in range(0, self.window_size, cell_size):
-            pygame.draw.line(self.window, (90, 90, 90), (x, 0), (x, self.window_size))
-        for y in range(0, self.window_size, cell_size):
-            pygame.draw.line(self.window, (90, 90, 90), (0, y), (self.window_size, y))
-
-        # Draw agent positions
-        for team in range(2):
-            for i in range(len(self.agents[team])):
-                agent = self.agents[team][i]
-                center = ((agent.location[1]+0.5)*cell_size,(agent.location[0]+0.5)*cell_size)
-                if agent.rotation == ag.Rotation.Up:
-                    end_point = (center[0], center[1] - (cell_size / 3))
-                elif agent.rotation == ag.Rotation.Down:
-                    end_point = (center[0], center[1] + (cell_size / 3))
-                elif agent.rotation == ag.Rotation.Left:
-                    end_point = (center[0] - (cell_size / 3), center[1])
-                else:
-                    end_point = (center[0] + (cell_size / 3), center[1])
-                
-                if i == self.active_agent and team == self.active_team and self.last_action == 3:
-                    pygame.draw.rect(self.window, (200, 17, 17), (agent.location[1] * cell_size, agent.location[0] * cell_size, cell_size, cell_size))
-                pygame.draw.circle(self.window, color_palette.team_colors[team], center, cell_size / 3)
-                pygame.draw.line(self.window, color_palette.background, center, end_point, 5)
-                pygame.draw.line(self.window, color_palette.health, (agent.location[1]*cell_size+cell_size/8,agent.location[0]*cell_size+cell_size/12), (agent.location[1]*cell_size+cell_size/8+cell_size/8*6*agent.health/ag.MAX_HEALTH,agent.location[0]*cell_size+cell_size/12), round(cell_size/14))
-
-        pygame.display.flip()
-        self.clock.tick(10)
-
-    def close(self):
-        if self.window is not None:
-            pygame.quit()
-
-    def get_state(self):
-        state = np.zeros((self.state_length,), dtype=np.float32)
-        # Agent positions
-        for row in range(self.grid_size):
-            for column in range(self.grid_size):
-                pos = (row*self.grid_size+column)*ag.AGENT_FIELDS
-                if self.grid[row][column] == None:
-                    state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5], state[pos+6] = 0,0,0,0,0,0,0
-                else:
-                    state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5] = self.grid[row][column].normalize()
-                    state[pos+6] = float(self.agents[self.active_team][self.active_agent].location == (row, column))
-
-        # Team's turn
-        state[self.grid_size*self.grid_size*ag.AGENT_FIELDS] = self.active_team
-
-        return state
-    
-    def set_last_action(self, action):
-        self.last_action = action
-
-    def set_active(self, agent, team):
-        self.active_team = team
-        self.active_agent = agent
-
-    def team_len(self, team):
-        return len(self.agents[team])
 
 # Register the environment with Gym
 gym.envs.register(

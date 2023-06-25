@@ -1,45 +1,44 @@
 from enum import Enum
 
-class Rotation(Enum):
-    Left = 0
-    Up = 1
-    Right = 2
-    Down = 3
-
 class Type(Enum):
-    Berserker = 0
-    Runner = 1
+    FIGHTER = 0
 
 class Profession():
-  def __init__(self, power, health, speed):
+  def __init__(self, power, health, speed, range):
     self.power = power
     self.health = health
     self.speed = speed
+    self.range = range
 
 PROFESSIONS = {}
-PROFESSIONS[Type.Berserker] = Profession(50,200,1)
-PROFESSIONS[Type.Runner] = Profession(50,100,2)
+PROFESSIONS[Type.FIGHTER] = Profession(20,100,1)
 
-MAX_ROTATIONS = len(Rotation) - 1
-MAX_TYPES = len(Type) - 1
-MAX_TEAMS = 1
+AGENT_FIELDS = 7
+# MAX_TYPES = len(Type) - 1
 MAX_HEALTH = 200
 MAX_SPEED = 2
-MAX_POWER = 200
-AGENT_FIELDS = 7
+MAX_POWER = 100
+MAX_ROW = 8
+MAX_COL = 8
+MAX_RANGE = 5
 
 
 class Agent:
-  def __init__(self, location, rotation, type, team, size):
-    self.location = location
-    self.size = size
-    self.rotation = rotation
+  def __init__(self, cell_id, type, team, health, power, speed, range):
+    # internal
+    self.cell_id = cell_id
+
+    # state
     self.type = type
     self.team = team
-    self.health = PROFESSIONS[type].health
+    self.health = health
+    self.power = power
+    self.speed = speed
+    self.range = range
+    self.is_active = False
 
   def normalize(self):
-    return self.rotation.value / MAX_ROTATIONS, self.type.value / MAX_TYPES, self.team / MAX_TEAMS, self.health / MAX_HEALTH, self.location[0] / (self.size-1), self.location[1] / (self.size-1)
+    return float(self.is_active), self.type.value, self.team, self.health / MAX_HEALTH, self.power / MAX_POWER, self.speed / MAX_SPEED, self.range / MAX_RANGE
 
 
   
