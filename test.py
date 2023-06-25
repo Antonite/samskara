@@ -2,15 +2,17 @@ import gymnasium as gym
 import torch
 import pygame
 import torch.nn as nn
-from custom_env import CustomEnv
+from samskara import Samskara
 
 training_dir = "training/"
+
+NUM_AGENTS = 5
 
 # Step 1: Set the device to CUDA if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.set_default_tensor_type(torch.cuda.FloatTensor if device.type == "cuda" else torch.FloatTensor)
 # Step 2: Create the environment
-env = gym.make('CustomEnv-v0', num_agents=1, grid_size=5)  # Set the number of agents
+env = gym.make('Samskara-v0', num_agents=NUM_AGENTS)  # Set the number of agents
 # Step 3: Define the neural network model for each agent
 num_states = env.observation_space.shape[0]
 num_actions = env.action_space.n
@@ -44,13 +46,13 @@ while not done:
     # state, _ = env.reset()
     total_rewards = [0.0] * 2
     env.render()
-    # 100 steps at a time
-    for i in range(100):
+    for i in range(200):
         for team in range(2):
             for agent in range(env.team_len(team)):
                 env.set_active(agent,team)
-                v = king_model(torch.tensor(state))
+                # v = king_model(torch.tensor(state))
                 action = torch.argmax(king_model(torch.tensor(state))).item()
+                # action = env.action_space.sample()
                 state, reward, _, _, _ = env.step(action)
                 env.set_last_action(action)
                 # print(f"agent: {agent} team: {team} action: {action} reward: {reward}")

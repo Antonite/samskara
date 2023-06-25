@@ -4,7 +4,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from custom_env import CustomEnv
+from samskara import Samskara
 import time
 from collections import deque
 
@@ -18,7 +18,7 @@ torch.set_default_tensor_type(torch.cuda.FloatTensor if device.type == "cuda" el
 
 
 # Step 2: Create the environment
-env = gym.make('CustomEnv-v0', num_agents=1)  # Set the number of agents
+env = gym.make('Samskara-v0', num_agents=1)  # Set the number of agents
 
 # Step 3: Define the neural network model for each agent
 num_states = env.observation_space.shape[0]

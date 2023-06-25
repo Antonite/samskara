@@ -6,10 +6,11 @@ import random
 import resources.colors as color_palette 
 import agent as ag
 import hexcell as hexcell
+import math as math
 
-class CustomEnv(gym.Env):
+class Samskara(gym.Env):
     def __init__(self, num_agents=1):
-        super(CustomEnv, self).__init__()
+        super(Samskara, self).__init__()
 
         # rewards
         self.REWARD_FOR_INVALID_ACTION = -1
@@ -136,13 +137,44 @@ class CustomEnv(gym.Env):
     def render(self):
         if self.window is None:
             pygame.init()
-            self.window = pygame.display.set_mode((self.window_size, self.window_size))
-            pygame.display.set_caption("CustomEnv")
+            self.window = pygame.display.set_mode((self.window_size, self.window_size - 60))
+            pygame.display.set_caption("samskara")
             self.clock = pygame.time.Clock()
 
         self.window.fill(color_palette.background)
+        font = pygame.font.Font(None, 21)
 
-        cell_radius = self.window_size // 18
+        hexagon_width_pixels = self.window_size / 9
+        # r = (2 ** 0.5) * math.cos(30)
+        cell_radius = hexagon_width_pixels / ((2 ** 0.5) + math.cos(30)) - 5
+
+        attacked_id = None
+        current_cell = self.grid.map[self.agents[self.active_team][self.active_agent].cell_id]
+        match self.last_action:
+            # LEFT
+            case 6:
+                if current_cell.neighbors[hexcell.Direction.LEFT] != None:
+                    attacked_id = current_cell.neighbors[hexcell.Direction.LEFT].id
+            # TOP_LEFT
+            case 7:
+                if current_cell.neighbors[hexcell.Direction.TOP_LEFT] != None:
+                    attacked_id = current_cell.neighbors[hexcell.Direction.TOP_LEFT].id
+            # TOP_RIGHT
+            case 8:
+                if current_cell.neighbors[hexcell.Direction.TOP_RIGHT] != None:
+                    attacked_id = current_cell.neighbors[hexcell.Direction.TOP_RIGHT].id
+            # RIGHT
+            case 9:
+                if current_cell.neighbors[hexcell.Direction.RIGHT] != None:
+                    attacked_id = current_cell.neighbors[hexcell.Direction.RIGHT].id
+            # BOTTOM_RIGHT
+            case 10:
+                if current_cell.neighbors[hexcell.Direction.BOTTOM_RIGHT] != None:
+                    attacked_id = current_cell.neighbors[hexcell.Direction.BOTTOM_RIGHT].id
+            # BOTTOM_LEFT
+            case 11:
+                if current_cell.neighbors[hexcell.Direction.BOTTOM_LEFT] != None:
+                    attacked_id = current_cell.neighbors[hexcell.Direction.BOTTOM_LEFT].id
         
         # Draw agent positions
         for i in range(self.num_cells):
@@ -151,63 +183,71 @@ class CustomEnv(gym.Env):
             row = 0
             # first row
             if 5 > next_cell.id:
-                render_offset = cell_radius*2
+                render_offset = hexagon_width_pixels*2 + hexagon_width_pixels*i
             # second row
             elif 11 > next_cell.id:
-                render_offset = cell_radius*1.5
+                render_offset = hexagon_width_pixels*1.5 + hexagon_width_pixels*(i-5)
                 row = 1
             # third row
             elif 18 > next_cell.id:
-                render_offset = cell_radius
+                render_offset = hexagon_width_pixels + hexagon_width_pixels*(i-11)
                 row = 2
             # fourth row
             elif 26 > next_cell.id:
-                render_offset = cell_radius*0.5
+                render_offset = hexagon_width_pixels*0.5 + hexagon_width_pixels*(i-18)
                 row = 3
             # fifth row
             elif 35 > next_cell.id:
-                render_offset = 0
+                render_offset = hexagon_width_pixels*(i-26)
                 row = 4
             # sixth row
             elif 43 > next_cell.id:
-                render_offset = cell_radius*0.5
+                render_offset = hexagon_width_pixels*0.5 + hexagon_width_pixels*(i-35)
                 row = 5
             # seventh row
             elif 50 > next_cell.id:
-                render_offset = cell_radius
+                render_offset = hexagon_width_pixels + hexagon_width_pixels*(i-43)
                 row = 6
             # eigth row
             elif 56 > next_cell.id:
-                render_offset = cell_radius*1.5
+                render_offset = hexagon_width_pixels*1.5 + hexagon_width_pixels*(i-50)
                 row = 7
             # ninth row
             elif 61 > next_cell.id:
-                render_offset = cell_radius*2
+                render_offset = hexagon_width_pixels*2 + hexagon_width_pixels*(i-56)
                 row = 8
 
 
             # Draw the hexagon
-            center_x = render_offset + cell_radius / 2
-            center_y = cell_radius * row + cell_radius / 2
-            vertices = [
-                (center_x + cell_radius * pygame.math.cos(angle), center_y + cell_radius * pygame.math.sin(angle))
-                for angle in [0, 60, 120, 180, 240, 300]
-            ]
-            pygame.draw.polygon(self.window, (90,90,90), vertices, 3)
+            center_x = render_offset + hexagon_width_pixels / 2
+            center_y = hexagon_width_pixels * row + hexagon_width_pixels / 2 - row*11 + 10
+            # Calculate the vertices of the hexagon
+            vertices = []
+            for anl in range(6):
+                angle_rad = (60 * anl + 30) * (3.14159 / 180)
+                vertex_x = center_x + cell_radius * math.cos(angle_rad)
+                vertex_y = center_y + cell_radius * math.sin(angle_rad)
+                vertices.append((vertex_x, vertex_y))
+            
+
+            if attacked_id != None and attacked_id == i:
+                pygame.draw.polygon(self.window, color_palette.damaged, vertices)
+            else:
+                pygame.draw.polygon(self.window, color_palette.cell_borders, vertices, 3)
+
+                
 
             # draw agent
             if next_cell.data != None:
                 pygame.draw.circle(self.window, color_palette.team_colors[next_cell.data.team], (center_x,center_y), cell_radius / 2)
-                # pygame.draw.line(self.window, color_palette.health, (agent.location[1]*cell_size+cell_size/8,agent.location[0]*cell_size+cell_size/12), (agent.location[1]*cell_size+cell_size/8+cell_size/8*6*agent.health/ag.MAX_HEALTH,agent.location[0]*cell_size+cell_size/12), round(cell_size/14))
-
-            # if i == self.active_agent and team == self.active_team and self.last_action == 3:
-            #     pygame.draw.rect(self.window, (200, 17, 17), (agent.location[1] * cell_size, agent.location[0] * cell_size, cell_size, cell_size))
-            # pygame.draw.circle(self.window, color_palette.team_colors[team], center, cell_size / 3)
-            # pygame.draw.line(self.window, color_palette.background, center, end_point, 5)
-            # pygame.draw.line(self.window, color_palette.health, (agent.location[1]*cell_size+cell_size/8,agent.location[0]*cell_size+cell_size/12), (agent.location[1]*cell_size+cell_size/8+cell_size/8*6*agent.health/ag.MAX_HEALTH,agent.location[0]*cell_size+cell_size/12), round(cell_size/14))
+                # agent's health
+                text_surface = font.render(str(next_cell.data.health), True, color_palette.background, color_palette.team_colors[next_cell.data.team])
+                text_rect = text_surface.get_rect()
+                text_rect.center = (center_x,center_y)
+                self.window.blit(text_surface, text_rect)
 
         pygame.display.flip()
-        self.clock.tick(10)
+        self.clock.tick(20)
 
     def step(self, action):
         reward = 0
@@ -241,7 +281,7 @@ class CustomEnv(gym.Env):
         else:
             # ---- MOVE ----
             if action < 6:
-                # cannot move onto occupied tile
+                # cannot move onto occupied cell
                 if next_cell.data != None:
                     reward = self.REWARD_FOR_INVALID_ACTION
                 else:
@@ -250,8 +290,8 @@ class CustomEnv(gym.Env):
                     current_cell.data = None
             # ---- ATTACK ----
             else:
-                # cannot attack empty tile
-                if next_cell.data == None:
+                # cannot attack empty cells or cells containing agents from the same team
+                if next_cell.data == None or next_cell.data.team == current_cell.data.team:
                     reward = self.REWARD_FOR_INVALID_ACTION
                 else:
                     next_cell.data.health -= agent.power
@@ -272,6 +312,6 @@ class CustomEnv(gym.Env):
 
 # Register the environment with Gym
 gym.envs.register(
-    id='CustomEnv-v0',
-    entry_point='custom_env:CustomEnv',
+    id='Samskara-v0',
+    entry_point='samskara:Samskara',
 )
