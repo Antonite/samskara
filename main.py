@@ -45,7 +45,7 @@ class QNetwork(nn.Module):
 
 # Step 4: Define the Q-learning parameters
 epochs = 1000
-num_episodes = 1000
+num_episodes = 10000
 
 discount_factor = 0.99
 max_steps_per_episode = 100000
@@ -83,13 +83,13 @@ total_loss = 0.0
 update = 0
 # Step 5: Implement the Q-learning algorithm using the neural network with experience replay
 for epoch in range(epochs):
+    run_updates = 0
+    total_steps = 0
     for episode in range(num_episodes):
         # state, _ = env.reset(options={"fair": True})
         state, _ = env.reset()
         episode_buffer = [[] for _ in range(2)]  # Buffer to store experiences in the episode
         winning_team = 0
-        run_updates = 0
-        total_steps = 0
         for step in range(max_steps_per_episode):
             # for each team
             for team in range(2):
@@ -190,7 +190,7 @@ for epoch in range(epochs):
     elapsed_time = time.time() - start_time
     total_rewards = [r // num_episodes for r in total_rewards]
     total_steps = total_steps // num_episodes
-    average_loss = total_loss // run_updates
+    average_loss = round(total_loss // run_updates, 2)
     print(f"Epoch {epoch}: Total Average Rewards = {total_rewards} Average steps = {total_steps} Average loss = {average_loss} Elapsed Time = {round(elapsed_time)} seconds")
     start_time = time.time()
     total_rewards = [0.0] * 2
