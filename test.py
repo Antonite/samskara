@@ -42,8 +42,8 @@ king_model.eval()
 # After training, you can test the agents' performance
 done = False
 while not done:
-    state, _ = env.reset(options={"fair": True})
-    # state, _ = env.reset()
+    # state, _ = env.reset(options={"fair": True})
+    state, _ = env.reset()
     total_rewards = [0.0] * 2
     env.render()
     for i in range(200):

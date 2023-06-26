@@ -14,7 +14,7 @@ class Samskara(gym.Env):
 
         # rewards
         self.REWARD_FOR_INVALID_ACTION = -1
-        self.REWARD_FOR_KILL = 1
+        self.REWARD_FOR_WIN = 1
 
         # Define the dimensions of the field
         self.num_cells = 61
@@ -235,8 +235,6 @@ class Samskara(gym.Env):
             else:
                 pygame.draw.polygon(self.window, color_palette.cell_borders, vertices, 3)
 
-                
-
             # draw agent
             if next_cell.data != None:
                 pygame.draw.circle(self.window, color_palette.team_colors[next_cell.data.team], (center_x,center_y), cell_radius / 2)
@@ -297,13 +295,13 @@ class Samskara(gym.Env):
                     next_cell.data.health -= agent.power
                     # dead
                     if next_cell.data.health <= 0.001:
-                        reward = self.REWARD_FOR_KILL
                         # remove from agent list
                         for deadi in range(len(self.agents[next_cell.data.team])):
                             if self.agents[next_cell.data.team][deadi].cell_id == next_cell.id:
                                 del self.agents[next_cell.data.team][deadi]
                                 if len(self.agents[next_cell.data.team]) == 0:
                                     done = True
+                                    reward = self.REWARD_FOR_WIN
                                 break
                         next_cell.data = None
             
