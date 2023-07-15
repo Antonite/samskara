@@ -13,7 +13,7 @@ class Samskara(gym.Env):
         super(Samskara, self).__init__()
 
         # rewards
-        self.REWARD_FOR_INVALID_ACTION = -1
+        self.REWARD_FOR_INVALID_ACTION = 0
         self.REWARD_FOR_WIN = 1
 
         # Define the dimensions of the field
@@ -49,9 +49,9 @@ class Samskara(gym.Env):
         # BOTTOM_RIGHT = 10
         # BOTTOM_LEFT = 11
         self.action_space = spaces.Discrete(12)
-        # Define the observation space (grid size * agent parameters + team's turn)
+        # Define the observation space (grid size * agent parameters)
         self.total_agent_fields = self.num_cells*ag.AGENT_FIELDS
-        self.state_length = self.total_agent_fields+1
+        self.state_length = self.total_agent_fields
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.state_length,), dtype=np.float32)
 
         # Initialize the agent and reward positions
@@ -69,6 +69,9 @@ class Samskara(gym.Env):
     # used by learning algorithm
     def team_len(self, team):
         return len(self.agents[team])
+    
+    def active_agent_id(self,team,agent):
+        return self.agents[team][agent].id
 
     def get_state(self):
         state = np.zeros((self.state_length,), dtype=np.float32)
@@ -79,10 +82,7 @@ class Samskara(gym.Env):
         for team in range(2):
             for agent in self.agents[team]:
                 pos = agent.cell_id*ag.AGENT_FIELDS
-                state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5], state[pos+6] = agent.normalize()
-
-        # Team's turn
-        state[self.total_agent_fields] = self.active_team
+                state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5], state[pos+6] = agent.normalize(self.active_team)
 
         # unset active agent
         self.agents[self.active_team][self.active_agent].is_active = False
@@ -101,8 +101,8 @@ class Samskara(gym.Env):
         nextCell = self.grid.map[random.randrange(self.num_cells)]
         for team in range(2):
             new_team = []
-            for _ in range(self.num_agents):
-                a = ag.Agent(nextCell.id,agent_type,team,ag.PROFESSIONS[agent_type].health,ag.PROFESSIONS[agent_type].power,ag.PROFESSIONS[agent_type].speed,ag.PROFESSIONS[agent_type].range)
+            for i in range(self.num_agents):
+                a = ag.Agent(team*self.num_agents+i,nextCell.id,agent_type,team,ag.PROFESSIONS[agent_type].health,ag.PROFESSIONS[agent_type].power,ag.PROFESSIONS[agent_type].speed,ag.PROFESSIONS[agent_type].range)
                 nextCell.data = a
                 new_team.append(a)
                 # new random cell
@@ -121,12 +121,13 @@ class Samskara(gym.Env):
 
         # agent_type = random.choice([ag.Type.Runner, ag.Type.Berserker])
         agent_type = ag.Type.FIGHTER
+        # nextCells = [self.grid.map[5],self.grid.map[55]]
         nextCells = [self.grid.map[0],self.grid.map[60]]
         for team in range(2):
             new_team = []
             direction = hexcell.Direction.RIGHT if team == 0 else hexcell.Direction.LEFT
-            for _ in range(self.num_agents):
-                a = ag.Agent(nextCells[team].id,agent_type,team,ag.PROFESSIONS[agent_type].health,ag.PROFESSIONS[agent_type].power,ag.PROFESSIONS[agent_type].speed,ag.PROFESSIONS[agent_type].range)
+            for i in range(self.num_agents):
+                a = ag.Agent(team*self.num_agents+i,nextCells[team].id,agent_type,team,ag.PROFESSIONS[agent_type].health,ag.PROFESSIONS[agent_type].power,ag.PROFESSIONS[agent_type].speed,ag.PROFESSIONS[agent_type].range)
                 nextCells[team].data = a
                 new_team.append(a)
                 nextCells[team] = nextCells[team].neighbors[direction]

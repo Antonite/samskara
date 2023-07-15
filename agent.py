@@ -24,9 +24,10 @@ MAX_RANGE = 5
 
 
 class Agent:
-  def __init__(self, cell_id, type, team, health, power, speed, range):
+  def __init__(self, id, cell_id, type, team, health, power, speed, range):
     # internal
     self.cell_id = cell_id
+    self.id = id
 
     # state
     self.type = type
@@ -37,8 +38,9 @@ class Agent:
     self.range = range
     self.is_active = False
 
-  def normalize(self):
-    return float(self.is_active), self.type.value, self.team, self.health / MAX_HEALTH, self.power / MAX_POWER, self.speed / MAX_SPEED, self.range / MAX_RANGE
+  def normalize(self, active_team):
+    t = 0 if active_team == self.team else 1
+    return float(self.is_active), self.type.value, t, self.health / MAX_HEALTH, self.power / MAX_POWER, self.speed / MAX_SPEED, self.range / MAX_RANGE
 
 
   

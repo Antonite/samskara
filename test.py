@@ -34,7 +34,7 @@ class QNetwork(nn.Module):
         return x
 
 king_model = QNetwork(num_states, num_actions)
-king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
+# king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
 king_model.eval()
 
 
@@ -42,17 +42,17 @@ king_model.eval()
 # After training, you can test the agents' performance
 done = False
 while not done:
-    # state, _ = env.reset(options={"fair": True})
-    state, _ = env.reset()
+    state, _ = env.reset(options={"fair": True})
+    # state, _ = env.reset()
     total_rewards = [0.0] * 2
     env.render()
-    for i in range(200):
+    for i in range(500):
         for team in range(2):
             for agent in range(env.team_len(team)):
                 env.set_active(agent,team)
-                # v = king_model(torch.tensor(state))
-                action = torch.argmax(king_model(torch.tensor(state))).item()
-                # action = env.action_space.sample()
+                v = king_model(torch.tensor(state))
+                # action = torch.argmax(king_model(torch.tensor(state))).item()
+                action = env.action_space.sample()
                 state, reward, _, _, _ = env.step(action)
                 env.set_last_action(action)
                 # print(f"agent: {agent} team: {team} action: {action} reward: {reward}")

@@ -11,7 +11,7 @@ from collections import deque
 training_dir = "training/"
 kings_dir = "training/kings/"
 
-REWARD_FOR_WIN = 1
+NUM_AGENTS = 5
 
 # Step 1: Set the device to CUDA if available
 
@@ -20,7 +20,9 @@ torch.set_default_tensor_type(torch.cuda.FloatTensor if device.type == "cuda" el
 
 
 # Step 2: Create the environment
-env = gym.make('Samskara-v0', num_agents=5)  # Set the number of agents
+env = gym.make('Samskara-v0', num_agents=NUM_AGENTS)  # Set the number of agents
+
+REWARD_FOR_LAST_ACTION = env.REWARD_FOR_WIN / 2
 
 # Step 3: Define the neural network model for each agent
 num_states = env.observation_space.shape[0]
@@ -49,9 +51,11 @@ num_episodes = 10000
 
 discount_factor = 0.99
 max_steps_per_episode = 100000
-exploration_rate = 1
-batch_size = 1000
-replay_start_threshold = 5000
+exploration_rate = 0.6
+batch_size = 10000
+replay_start_threshold = 50000
+outcome_batch_size = 100
+outcome_start_threshold = 100
 
 agent_replay_buffers = []
 
@@ -74,7 +78,11 @@ agent_target_model = QNetwork(num_states, num_actions)
 agent_target_model.load_state_dict(king_model.state_dict())
 agent_target_model.eval()
 agent_replay_buffer = deque(maxlen=replay_start_threshold)
-optimizer = optim.Adam(king_model.parameters(), lr=0.0001)
+
+episode_outcome_buffer = deque(maxlen=num_episodes)
+episode_before_learning = num_episodes // 10
+
+optimizer = optim.Adam(king_model.parameters(), lr=0.00005)
 criterion = nn.MSELoss()
 
 start_time = time.time()
@@ -83,14 +91,20 @@ total_loss = 0.0
 update = 0
 # Step 5: Implement the Q-learning algorithm using the neural network with experience replay
 for epoch in range(epochs):
-    run_updates = 0
     total_steps = 0
     for episode in range(num_episodes):
-        # state, _ = env.reset(options={"fair": True})
-        state, _ = env.reset()
-        episode_buffer = [[] for _ in range(2)]  # Buffer to store experiences in the episode
+        env.set_active(0, 0)
+        state, _ = env.reset(options={"fair": True})
+        # state, _ = env.reset()
+        episode_buffer = [{} for _ in range(2)]  # Buffer to store experiences in the episode
+        for t in range(2):
+            for a in range(env.team_len(t)):
+                id = env.active_agent_id(t,a)
+                episode_buffer[t][id] = []
+
         winning_team = 0
         for step in range(max_steps_per_episode):
+            total_steps += 1
             # for each team
             for team in range(2):
                 # for each agent
@@ -99,7 +113,6 @@ for epoch in range(epochs):
                     exploration_threshold = np.random.uniform(0, 1)
                     if exploration_threshold > exploration_rate:
                         with torch.no_grad():
-                            # action = torch.argmax(agent_models[team](torch.tensor(state))).item()
                             action = torch.argmax(king_model(torch.tensor(state))).item()
                     else:
                         action = env.action_space.sample()
@@ -107,54 +120,56 @@ for epoch in range(epochs):
                     env.set_active(agent, team)
                     new_state, reward, done, _, _ = env.step(action)
 
-                    # Store the experience in the episode buffer
                     if reward != 0:
                         total_rewards[team] += reward
-                        episode_buffer[team].append((state, action, reward, new_state, done))
-                        # agent_replay_buffer.append((state, action, reward, new_state, done))
+                    # Store the experience in the episode buffer
 
+                    episode_buffer[team][env.active_agent_id(team,agent)].append((state, action, reward, done))
                     state = new_state
                     
                     if done:
                         winning_team = team
-                        # punish the last move of losing team
-                        s, a, r, n, d = episode_buffer[(team + 1) % 2][-1]
-                        episode_buffer[(team + 1) % 2][-1] = (s, a, r - REWARD_FOR_WIN, n, d)
                         break
                 if done:
                     break
             if done:
                 break
         
-            total_steps += step+1
+            
 
         # Assign retroactive rewards at the end of the episode
         if done:
             for team in range(2):
-                agent_replay_buffer.extend(episode_buffer[team])
-                # if len(episode_buffer[team]) > 0:
-                    # m = max(50 / len(episode_buffer[team]), 0.1)
-                    # bonus = 1 if team == winning_team else -1
-                # for episode in range(len(episode_buffer[team])):
-                #     s, a, r, n, d = episode_buffer[team][episode]
-                #     if team == winning_team:
-                #         if r >= 0:
-                #             r += 1
-                #         agent_replay_buffer.append((s, a, r, n, d))
-                #     else:
-                #         if r < 0:
-                #             agent_replay_buffer.append((s, a, r, n, d))
-                            
-                    # modified_transitions = [(s, a, r + bonus, n, d) for s, a, r, n, d in episode_buffer[team]]
-                    # agent_replay_buffers[team].extend(episode_buffer[team])
+                for a in episode_buffer[team]:
+                    l = len(episode_buffer[team][a])
+                    for i in range(l):
+                        e = episode_buffer[team][a][i]
+                        # last element, next state doesn't matter
+                        if i+1 == l:
+                            if team == winning_team:
+                                # winning move
+                                if e[3]:
+                                    episode_outcome_buffer.append((e[0],e[1],e[2],e[0],e[3]))
+                                else:
+                                    episode_outcome_buffer.append((e[0],e[1],REWARD_FOR_LAST_ACTION,e[0],True))
+                        else:
+                            agent_replay_buffer.append((e[0],e[1],e[2],episode_buffer[team][a][i+1][0],e[3]))
+                
             
         # Update the Q-networks using experience replay
-        if len(agent_replay_buffer) >= replay_start_threshold:
+        if len(agent_replay_buffer) >= replay_start_threshold or len(episode_outcome_buffer) >= outcome_start_threshold:
+            batch = []
             # Get a random batch from the buffer
-            batch = random.choices(agent_replay_buffer, k=batch_size)
-            # Remove the batch from the buffer
-            for _ in range(batch_size):
-                agent_replay_buffer.popleft()
+            if len(agent_replay_buffer) >= replay_start_threshold:
+                batch = random.choices(agent_replay_buffer, k=batch_size)
+                # Remove the batch from the buffer
+                for _ in range(batch_size):
+                    agent_replay_buffer.popleft()
+            else:
+                batch = []
+                # Remove the batch from the buffer
+                for _ in range(outcome_batch_size):
+                    batch.append(episode_outcome_buffer.popleft())
 
             states, actions, rewards, next_states, dones = zip(*batch)
 
@@ -170,7 +185,7 @@ for epoch in range(epochs):
             target_values = rewards + discount_factor * torch.max(next_q_values, dim=1)[0] * (1 - dones.float())
 
             # Update the Q-values
-            q_values[range(batch_size), actions] = target_values
+            q_values[range(len(actions)), actions] = target_values
 
             # Compute the loss and optimize the model
             optimizer.zero_grad()
@@ -178,20 +193,16 @@ for epoch in range(epochs):
             loss.backward()
             optimizer.step()
 
-            total_loss += loss
-            run_updates += 1
-
             # Update the target networks periodically
             if update % 10 == 0:
                 agent_target_model.load_state_dict(king_model.state_dict())
             update += 1
 
     # Print the episode number and total rewards
-    elapsed_time = time.time() - start_time
-    total_rewards = [r // num_episodes for r in total_rewards]
-    total_steps = total_steps // num_episodes
-    average_loss = round(total_loss // run_updates, 2)
-    print(f"Epoch {epoch}: Total Average Rewards = {total_rewards} Average steps = {total_steps} Average loss = {average_loss} Elapsed Time = {round(elapsed_time)} seconds")
+    elapsed_time = (time.time() - start_time) // 60
+    total_rewards = [round(r / num_episodes,3) for r in total_rewards]
+    average_steps = total_steps // num_episodes
+    print(f"Epoch {epoch}: Total Average Rewards = {total_rewards} Average steps = {average_steps} Elapsed Time = {elapsed_time} minutes")
     start_time = time.time()
     total_rewards = [0.0] * 2
 
