@@ -51,8 +51,8 @@ while not done:
             for agent in range(env.team_len(team)):
                 env.set_active(agent,team)
                 v = king_model(torch.tensor(state))
-                # action = torch.argmax(king_model(torch.tensor(state))).item()
-                action = env.action_space.sample()
+                action = torch.argmax(king_model(torch.tensor(state))).item()
+                # action = env.action_space.sample()
                 state, reward, _, _, _ = env.step(action)
                 env.set_last_action(action)
                 # print(f"agent: {agent} team: {team} action: {action} reward: {reward}")
