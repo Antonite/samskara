@@ -33,37 +33,37 @@ class Actor(nn.Module):
 
 actor_network = Actor(num_states, num_actions)
 actor_network.load_state_dict(torch.load(f"{training_dir}actor_network.pth"))
-actor_network.eval()
-
+# actor_network.eval()
 
 # After training, you can test the agents' performance
-done = False
-while not done:
+while True:
     state, _ = env.reset(options={"fair": True})
     # state, _ = env.reset()
     env.render()
-    for team in range(2):
-        actions = []
-        for agent in range(env.team_len(team)):
-            env.set_active(agent, team)
-            actor_state = env.get_state()
+    done = False
+    while not done:
+        for team in range(2):
+            actions = []
+            for agent in range(env.team_len(team)):
+                env.set_active(agent, team)
+                actor_state = env.get_state()
 
-            # Select an action
-            action_probs = actor_network(torch.tensor(actor_state))
-            action_distribution = torch.distributions.Categorical(action_probs)
-            action = action_distribution.sample()
+                # Select an action
+                action_probs = actor_network(torch.tensor(actor_state))
+                action_distribution = torch.distributions.Categorical(action_probs)
+                action = action_distribution.sample()
 
-            sampled_action = action + 1
-            actions.append(sampled_action)
+                sampled_action = action + 1
+                actions.append(sampled_action)
 
-        # Take a step in the environment with all actions
-        _, reward, done, _, _ = env.step(actions)
-        env.set_last_actions(actions)
+            # Take a step in the environment with all actions
+            _, reward, done, _, _ = env.step(actions)
+            env.set_last_actions(actions)
 
-        # print(f"agent: {agent} team: {team} action: {action} reward: {reward}")
-        pygame.event.pump()
-        env.render()
+            # print(f"agent: {agent} team: {team} action: {action} reward: {reward}")
+            pygame.event.pump()
+            env.render()
 
-        if done:
-            break
+            if done:
+                break
     

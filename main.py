@@ -77,8 +77,8 @@ update = 0
 for epoch in range(epochs):
     total_steps = 0
     for episode in range(num_episodes):
-        env.reset(options={"fair": True})
-        # state, _ = env.reset()
+        # env.reset(options={"fair": True})
+        env.reset()
         done = False
         log_probs = []
         values = []
