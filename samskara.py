@@ -171,7 +171,7 @@ class Samskara(gym.Env):
 
         # Get attacked id for each agent
         attacked_ids = []
-        if len(self.last_actions) > 0:
+        if len(self.last_actions) == len(self.agents[self.active_team]):
             for agent_i in range(len(self.agents[self.active_team])): 
                 agent_cell = self.grid.map[self.agents[self.active_team][agent_i].cell_id]
                 match self.last_actions[agent_i]:
