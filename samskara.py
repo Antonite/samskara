@@ -13,8 +13,8 @@ class Samskara(gym.Env):
         super(Samskara, self).__init__()
 
         # rewards
-        self.REWARD_FOR_INVALID_ACTION = 0
         self.REWARD_FOR_WIN = 1
+        self.REWARD_FOR_KILL = 0.2
 
         # Define the dimensions of the field
         self.num_cells = 61
@@ -31,35 +31,39 @@ class Samskara(gym.Env):
         self.window_size = 768
         self.window = None
         self.clock = None
-        self.last_action = 0
+        self.last_actions = []
 
         # Define the possible actions
         # ---- MOVE ----
-        # LEFT = 0
-        # TOP_LEFT = 1
-        # TOP_RIGHT = 2
-        # RIGHT = 3
-        # BOTTOM_RIGHT = 4
-        # BOTTOM_LEFT = 5
+        # LEFT = 1
+        # TOP_LEFT = 2
+        # TOP_RIGHT = 3
+        # RIGHT = 4
+        # BOTTOM_RIGHT = 5
+        # BOTTOM_LEFT = 6
         # ---- ATTACK ----
-        # LEFT = 6
-        # TOP_LEFT = 7
-        # TOP_RIGHT = 8
-        # RIGHT = 9
-        # BOTTOM_RIGHT = 10
-        # BOTTOM_LEFT = 11
-        self.action_space = spaces.Discrete(12)
+        # LEFT = 7
+        # TOP_LEFT = 8
+        # TOP_RIGHT = 9
+        # RIGHT = 10
+        # BOTTOM_RIGHT = 11
+        # BOTTOM_LEFT = 12
+        self.num_actions = 12
+        self.action_space = spaces.Discrete(self.num_actions)
         # Define the observation space (grid size * agent parameters)
-        self.total_agent_fields = self.num_cells*ag.AGENT_FIELDS
-        self.state_length = self.total_agent_fields
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.state_length,), dtype=np.float32)
+        self.total_actor_agent_fields = self.num_cells*ag.AGENT_FIELDS
+        self.total_critic_agent_fields = self.num_cells*(ag.AGENT_FIELDS + 1)
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.total_actor_agent_fields,), dtype=np.float32)
+        self.critic_observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.total_critic_agent_fields,), dtype=np.float32)
+
+        self.empty_actor_state = np.zeros((self.total_actor_agent_fields,), dtype=np.float32)
 
         # Initialize the agent and reward positions
         self.reset()
 
     # used to render
-    def set_last_action(self, action):
-        self.last_action = action
+    def set_last_actions(self, actions):
+        self.last_actions = actions
 
     # used to figure out who to calculate steps for
     def set_active(self, agent, team):
@@ -74,7 +78,7 @@ class Samskara(gym.Env):
         return self.agents[team][agent].id
 
     def get_state(self):
-        state = np.zeros((self.state_length,), dtype=np.float32)
+        state = np.zeros((self.total_actor_agent_fields,), dtype=np.float32)
         # set active agent
         self.agents[self.active_team][self.active_agent].is_active = True
 
@@ -88,6 +92,22 @@ class Samskara(gym.Env):
         self.agents[self.active_team][self.active_agent].is_active = False
 
         return state
+
+    def get_critic_state(self, actions):
+        state = np.zeros((self.total_critic_agent_fields,), dtype=np.float32)
+
+        # Agent positions 
+        for team in range(2):
+            for agent in range(len(self.agents[team])):
+                pos = self.agents[team][agent].cell_id*(ag.AGENT_FIELDS+1) # +1 for the extra field for the action taken
+                state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5], state[pos+6] = self.agents[team][agent].normalize(self.active_team)
+                if team == self.active_team:
+                    state[pos+7] = actions[agent] / self.num_actions # normalized action of each agent, ranges from 1/12 to 12/12
+                else:
+                    state[pos+7] = 0 # enemy team didn't take any actions
+
+        return state
+            
 
     def reset(self, seed: int | None = None, options: dict[str, object()] | None = None):
         super().reset()
@@ -149,33 +169,37 @@ class Samskara(gym.Env):
         # r = (2 ** 0.5) * math.cos(30)
         cell_radius = hexagon_width_pixels / ((2 ** 0.5) + math.cos(30)) - 5
 
-        attacked_id = None
-        current_cell = self.grid.map[self.agents[self.active_team][self.active_agent].cell_id]
-        match self.last_action:
-            # LEFT
-            case 6:
-                if current_cell.neighbors[hexcell.Direction.LEFT] != None:
-                    attacked_id = current_cell.neighbors[hexcell.Direction.LEFT].id
-            # TOP_LEFT
-            case 7:
-                if current_cell.neighbors[hexcell.Direction.TOP_LEFT] != None:
-                    attacked_id = current_cell.neighbors[hexcell.Direction.TOP_LEFT].id
-            # TOP_RIGHT
-            case 8:
-                if current_cell.neighbors[hexcell.Direction.TOP_RIGHT] != None:
-                    attacked_id = current_cell.neighbors[hexcell.Direction.TOP_RIGHT].id
-            # RIGHT
-            case 9:
-                if current_cell.neighbors[hexcell.Direction.RIGHT] != None:
-                    attacked_id = current_cell.neighbors[hexcell.Direction.RIGHT].id
-            # BOTTOM_RIGHT
-            case 10:
-                if current_cell.neighbors[hexcell.Direction.BOTTOM_RIGHT] != None:
-                    attacked_id = current_cell.neighbors[hexcell.Direction.BOTTOM_RIGHT].id
-            # BOTTOM_LEFT
-            case 11:
-                if current_cell.neighbors[hexcell.Direction.BOTTOM_LEFT] != None:
-                    attacked_id = current_cell.neighbors[hexcell.Direction.BOTTOM_LEFT].id
+        # Get attacked id for each agent
+        attacked_ids = []
+        if len(self.last_actions) > 0:
+            for agent_i in range(len(self.agents[self.active_team])): 
+                agent_cell = self.grid.map[self.agents[self.active_team][agent_i].cell_id]
+                match self.last_actions[agent_i]:
+                    # LEFT
+                    case 7:
+                        if agent_cell.neighbors[hexcell.Direction.LEFT] != None:
+                            attacked_ids.append(agent_cell.neighbors[hexcell.Direction.LEFT].id)
+                    # TOP_LEFT
+                    case 8:
+                        if agent_cell.neighbors[hexcell.Direction.TOP_LEFT] != None:
+                            attacked_ids.append(agent_cell.neighbors[hexcell.Direction.TOP_LEFT].id)
+                    # TOP_RIGHT
+                    case 9:
+                        if agent_cell.neighbors[hexcell.Direction.TOP_RIGHT] != None:
+                            attacked_ids.append(agent_cell.neighbors[hexcell.Direction.TOP_RIGHT].id)
+                    # RIGHT
+                    case 10:
+                        if agent_cell.neighbors[hexcell.Direction.RIGHT] != None:
+                            attacked_ids.append(agent_cell.neighbors[hexcell.Direction.RIGHT].id)
+                    # BOTTOM_RIGHT
+                    case 11:
+                        if agent_cell.neighbors[hexcell.Direction.BOTTOM_RIGHT] != None:
+                            attacked_ids.append(agent_cell.neighbors[hexcell.Direction.BOTTOM_RIGHT].id)
+                    # BOTTOM_LEFT
+                    case 12:
+                        if agent_cell.neighbors[hexcell.Direction.BOTTOM_LEFT] != None:
+                            attacked_ids.append(agent_cell.neighbors[hexcell.Direction.BOTTOM_LEFT].id)
+        
         
         # Draw agent positions
         for i in range(self.num_cells):
@@ -230,8 +254,12 @@ class Samskara(gym.Env):
                 vertex_y = center_y + cell_radius * math.sin(angle_rad)
                 vertices.append((vertex_x, vertex_y))
             
+            attacked = False
+            for attacked_id in attacked_ids:
+                if attacked_id == i:
+                    attacked = True
 
-            if attacked_id != None and attacked_id == i:
+            if attacked:
                 pygame.draw.polygon(self.window, color_palette.damaged, vertices)
             else:
                 pygame.draw.polygon(self.window, color_palette.cell_borders, vertices, 3)
@@ -248,66 +276,101 @@ class Samskara(gym.Env):
         pygame.display.flip()
         self.clock.tick(20)
 
-    def step(self, action):
+    def step(self, actions):
         reward = 0
         done = False
-        agent = self.agents[self.active_team][self.active_agent]
-        current_cell = self.grid.map[agent.cell_id]
-        next_cell = None
-        match action:
-            # LEFT
-            case 0 | 6:
-                next_cell = current_cell.neighbors[hexcell.Direction.LEFT]
-            # TOP_LEFT
-            case 1 | 7:
-                next_cell = current_cell.neighbors[hexcell.Direction.TOP_LEFT]
-            # TOP_RIGHT
-            case 2 | 8:
-                next_cell = current_cell.neighbors[hexcell.Direction.TOP_RIGHT]
-            # RIGHT
-            case 3 | 9:
-                next_cell = current_cell.neighbors[hexcell.Direction.RIGHT]
-            # BOTTOM_RIGHT
-            case 4 | 10:
-                next_cell = current_cell.neighbors[hexcell.Direction.BOTTOM_RIGHT]
-            # BOTTOM_LEFT
-            case 5 | 11:
-                next_cell = current_cell.neighbors[hexcell.Direction.BOTTOM_LEFT]
+        next_positions = [None for _ in range(len(actions))]
+        # Find next locations in case agent is moving
+        for agent_i in range(len(self.agents[self.active_team])):
+            current_cell = self.grid.map[self.agents[self.active_team][agent_i].cell_id]
+            next_cell = None
+            match actions[agent_i]:
+                # LEFT
+                case 1:
+                    next_cell = current_cell.neighbors[hexcell.Direction.LEFT]
+                # TOP_LEFT
+                case 2:
+                    next_cell = current_cell.neighbors[hexcell.Direction.TOP_LEFT]
+                # TOP_RIGHT
+                case 3:
+                    next_cell = current_cell.neighbors[hexcell.Direction.TOP_RIGHT]
+                # RIGHT
+                case 4:
+                    next_cell = current_cell.neighbors[hexcell.Direction.RIGHT]
+                # BOTTOM_RIGHT
+                case 5:
+                    next_cell = current_cell.neighbors[hexcell.Direction.BOTTOM_RIGHT]
+                # BOTTOM_LEFT
+                case 6:
+                    next_cell = current_cell.neighbors[hexcell.Direction.BOTTOM_LEFT]
+            # Valid and empty cell?
+            if next_cell != None and next_cell.data == None:
+                next_positions[agent_i] = next_cell
 
-        # Invalid action
-        if next_cell == None:
-            reward = self.REWARD_FOR_INVALID_ACTION
-        else:
-            # ---- MOVE ----
-            if action < 6:
-                # cannot move onto occupied cell
-                if next_cell.data != None:
-                    reward = self.REWARD_FOR_INVALID_ACTION
-                else:
+        # Check for collisions
+        for pos in range(len(next_positions)):
+            if next_positions[pos] != None:
+                # Check all other positions for collision
+                collision = False
+                for other in range(pos+1,len(next_positions),1):
+                    # Collision
+                    if next_positions[other] != None and next_positions[other].id == next_positions[pos].id:
+                        collision = True
+                        next_positions[other] = None
+                if collision:
+                    next_positions[pos] = None
+
+                    
+        for agent_i in range(len(self.agents[self.active_team])):
+            agent = self.agents[self.active_team][agent_i]
+            current_cell = self.grid.map[agent.cell_id]
+            next_cell = None
+            match actions[agent_i]:
+                # LEFT
+                case 1 | 7:
+                    next_cell = current_cell.neighbors[hexcell.Direction.LEFT]
+                # TOP_LEFT
+                case 2 | 8:
+                    next_cell = current_cell.neighbors[hexcell.Direction.TOP_LEFT]
+                # TOP_RIGHT
+                case 3 | 9:
+                    next_cell = current_cell.neighbors[hexcell.Direction.TOP_RIGHT]
+                # RIGHT
+                case 4 | 10:
+                    next_cell = current_cell.neighbors[hexcell.Direction.RIGHT]
+                # BOTTOM_RIGHT
+                case 5 | 11:
+                    next_cell = current_cell.neighbors[hexcell.Direction.BOTTOM_RIGHT]
+                # BOTTOM_LEFT
+                case 6 | 12:
+                    next_cell = current_cell.neighbors[hexcell.Direction.BOTTOM_LEFT]
+
+            # Valid action
+            if next_cell != None:
+                # ---- MOVE ----
+                if actions[agent_i] < 7 and next_positions[agent_i] != None:
                     next_cell.data = agent
                     agent.cell_id = next_cell.id
                     current_cell.data = None
-            # ---- ATTACK ----
-            else:
-                # cannot attack empty cells or cells containing agents from the same team
-                if next_cell.data == None or next_cell.data.team == current_cell.data.team:
-                    reward = self.REWARD_FOR_INVALID_ACTION
-                else:
-                    next_cell.data.health -= agent.power
-                    # dead
-                    if next_cell.data.health <= 0.001:
-                        # remove from agent list
-                        for deadi in range(len(self.agents[next_cell.data.team])):
-                            if self.agents[next_cell.data.team][deadi].cell_id == next_cell.id:
-                                del self.agents[next_cell.data.team][deadi]
-                                if len(self.agents[next_cell.data.team]) == 0:
-                                    done = True
-                                    reward = self.REWARD_FOR_WIN
-                                break
-                        next_cell.data = None
+                # ---- ATTACK ----
+                elif actions[agent_i] >= 7 and next_cell.data != None and next_cell.data.team != current_cell.data.team:
+                        next_cell.data.health -= agent.power
+                        # dead
+                        if next_cell.data.health <= 0.001:
+                            # remove from agent list
+                            for deadi in range(len(self.agents[next_cell.data.team])):
+                                if self.agents[next_cell.data.team][deadi].cell_id == next_cell.id:
+                                    del self.agents[next_cell.data.team][deadi]
+                                    if len(self.agents[next_cell.data.team]) == 0:
+                                        done = True
+                                        reward = self.REWARD_FOR_WIN
+                                        return self.empty_actor_state, reward, done, False, {} 
+                                    reward += self.REWARD_FOR_KILL
+                                    break
+                            next_cell.data = None
             
                     
-        return self.get_state(), reward, done, False, {}
+        return self.empty_actor_state, reward, done, False, {}
 
 # Register the environment with Gym
 gym.envs.register(

@@ -8,18 +8,16 @@ training_dir = "training/"
 
 NUM_AGENTS = 5
 
-# Step 1: Set the device to CUDA if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.set_default_tensor_type(torch.cuda.FloatTensor if device.type == "cuda" else torch.FloatTensor)
-# Step 2: Create the environment
 env = gym.make('Samskara-v0', num_agents=NUM_AGENTS)  # Set the number of agents
-# Step 3: Define the neural network model for each agent
+
 num_states = env.observation_space.shape[0]
 num_actions = env.action_space.n
 
-class QNetwork(nn.Module):
+class Actor(nn.Module):
     def __init__(self, num_states, num_actions):
-        super(QNetwork, self).__init__()
+        super(Actor, self).__init__()
         hidden_size = round(num_states * 2/3 + num_actions)
         self.fc1 = nn.Linear(num_states, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
@@ -30,13 +28,12 @@ class QNetwork(nn.Module):
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
         x = torch.relu(self.fc3(x))
-        x = self.fc4(x)
+        x = torch.softmax(self.fc4(x),  dim=-1)
         return x
 
-king_model = QNetwork(num_states, num_actions)
-# king_model.load_state_dict(torch.load(f"{training_dir}agent_model.pth"))
-king_model.eval()
-
+actor_network = Actor(num_states, num_actions)
+actor_network.load_state_dict(torch.load(f"{training_dir}actor_network.pth"))
+actor_network.eval()
 
 
 # After training, you can test the agents' performance
@@ -44,22 +41,29 @@ done = False
 while not done:
     state, _ = env.reset(options={"fair": True})
     # state, _ = env.reset()
-    total_rewards = [0.0] * 2
     env.render()
-    for i in range(500):
-        for team in range(2):
-            for agent in range(env.team_len(team)):
-                env.set_active(agent,team)
-                v = king_model(torch.tensor(state))
-                action = torch.argmax(king_model(torch.tensor(state))).item()
-                # action = env.action_space.sample()
-                state, reward, _, _, _ = env.step(action)
-                env.set_last_action(action)
-                # print(f"agent: {agent} team: {team} action: {action} reward: {reward}")
-                total_rewards[team] += reward
-                pygame.event.pump()
-                env.render()
+    for team in range(2):
+        actions = []
+        for agent in range(env.team_len(team)):
+            env.set_active(agent, team)
+            actor_state = env.get_state()
 
-    # Print the total rewards achieved in the test episode
-    print(f"Test Episode: Total Rewards = {total_rewards}")
+            # Select an action
+            action_probs = actor_network(torch.tensor(actor_state))
+            action_distribution = torch.distributions.Categorical(action_probs)
+            action = action_distribution.sample()
+
+            sampled_action = action + 1
+            actions.append(sampled_action)
+
+        # Take a step in the environment with all actions
+        _, reward, done, _, _ = env.step(actions)
+        env.set_last_actions(actions)
+
+        # print(f"agent: {agent} team: {team} action: {action} reward: {reward}")
+        pygame.event.pump()
+        env.render()
+
+        if done:
+            break
     
