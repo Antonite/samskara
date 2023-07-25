@@ -61,6 +61,16 @@ class Samskara(gym.Env):
         # Initialize the agent and reward positions
         self.reset()
 
+    def invert_action(self,action):
+        if action in [1, 2, 3]:
+            return action + 3
+        elif action in [4, 5, 6]:
+            return action - 3
+        elif action in [7, 8, 9]:
+            return action + 3
+        elif action in [10, 11, 12]:
+            return action - 3
+
     # used to render
     def set_last_actions(self, actions):
         self.last_actions = actions
@@ -85,7 +95,8 @@ class Samskara(gym.Env):
         # Agent positions 
         for team in range(2):
             for agent in self.agents[team]:
-                pos = agent.cell_id*ag.AGENT_FIELDS
+                id = agent.cell_id if self.active_team == 0 else self.num_cells - 1 - agent.cell_id
+                pos = id*ag.AGENT_FIELDS
                 state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5], state[pos+6] = agent.normalize(self.active_team)
 
         # unset active agent
@@ -99,7 +110,8 @@ class Samskara(gym.Env):
         # Agent positions 
         for team in range(2):
             for agent in range(len(self.agents[team])):
-                pos = self.agents[team][agent].cell_id*(ag.AGENT_FIELDS+1) # +1 for the extra field for the action taken
+                id = self.agents[team][agent].cell_id if self.active_team == 0 else self.num_cells - 1 - self.agents[team][agent].cell_id
+                pos = id*(ag.AGENT_FIELDS+1) # +1 for the extra field for the action taken
                 state[pos], state[pos+1], state[pos+2], state[pos+3], state[pos+4], state[pos+5], state[pos+6] = self.agents[team][agent].normalize(self.active_team)
                 if team == self.active_team:
                     state[pos+7] = actions[agent] / self.num_actions # normalized action of each agent, ranges from 1/12 to 12/12
@@ -174,7 +186,11 @@ class Samskara(gym.Env):
         if len(self.last_actions) == len(self.agents[self.active_team]):
             for agent_i in range(len(self.agents[self.active_team])): 
                 agent_cell = self.grid.map[self.agents[self.active_team][agent_i].cell_id]
-                match self.last_actions[agent_i]:
+                act = self.last_actions[agent_i]
+                # Flip action for team 1 since the state is flipped for team 1
+                if self.active_team == 1:
+                    act = self.invert_action(act)
+                match act:
                     # LEFT
                     case 7:
                         if agent_cell.neighbors[hexcell.Direction.LEFT] != None:
@@ -284,7 +300,11 @@ class Samskara(gym.Env):
         for agent_i in range(len(self.agents[self.active_team])):
             current_cell = self.grid.map[self.agents[self.active_team][agent_i].cell_id]
             next_cell = None
-            match actions[agent_i]:
+            act = actions[agent_i]
+            # Flip action for team 1 since the state is flipped for team 1
+            if self.active_team == 1:
+                act = self.invert_action(act)
+            match act:
                 # LEFT
                 case 1:
                     next_cell = current_cell.neighbors[hexcell.Direction.LEFT]
@@ -325,7 +345,11 @@ class Samskara(gym.Env):
             agent = self.agents[self.active_team][agent_i]
             current_cell = self.grid.map[agent.cell_id]
             next_cell = None
-            match actions[agent_i]:
+            act = actions[agent_i]
+            # Flip action for team 1 since the state is flipped for team 1
+            if self.active_team == 1:
+                act = self.invert_action(act)
+            match act:
                 # LEFT
                 case 1 | 7:
                     next_cell = current_cell.neighbors[hexcell.Direction.LEFT]
@@ -348,12 +372,12 @@ class Samskara(gym.Env):
             # Valid action
             if next_cell != None:
                 # ---- MOVE ----
-                if actions[agent_i] < 7 and next_positions[agent_i] != None:
+                if act < 7 and next_positions[agent_i] != None:
                     next_cell.data = agent
                     agent.cell_id = next_cell.id
                     current_cell.data = None
                 # ---- ATTACK ----
-                elif actions[agent_i] >= 7 and next_cell.data != None and next_cell.data.team != current_cell.data.team:
+                elif act >= 7 and next_cell.data != None and next_cell.data.team != current_cell.data.team:
                         next_cell.data.health -= agent.power
                         # dead
                         if next_cell.data.health <= 0.001:

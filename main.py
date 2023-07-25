@@ -55,35 +55,33 @@ class Critic(nn.Module):
 
 # Params
 epochs = 1000
-num_episodes = 100
+num_episodes = 10
 max_steps_per_episode = 512
-discount_factor = 0.99
+discount_factor = 0.999
 
 # Create actor and critic networks
 actor_network = Actor(num_states_actor, num_actions)
 critic_network = Critic(num_states_critic, num_actions)
-actor_network.load_state_dict(torch.load(f"{training_dir}actor_network.pth"))
-critic_network.load_state_dict(torch.load(f"{training_dir}critic_network.pth"))
+# actor_network.load_state_dict(torch.load(f"{training_dir}actor_network.pth"))
+# critic_network.load_state_dict(torch.load(f"{training_dir}critic_network.pth"))
 
 # Optimizers
 actor_optimizer = torch.optim.Adam(actor_network.parameters())
 critic_optimizer = torch.optim.Adam(critic_network.parameters())
 
-
-start_time = time.time()
-total_rewards = [0.0] * 2
-total_loss = 0.0
-update = 0
 for epoch in range(epochs):
     total_steps = 0
+    total_loss = [0.0] * 2
+    total_rewards = [0.0] * 2
+    start_time = time.time()
     for episode in range(num_episodes):
-        # env.reset(options={"fair": True})
-        env.reset()
+        env.reset(options={"fair": True})
+        # env.reset()
         done = False
-        log_probs = []
-        values = []
-        rewards = []
-        masks = []
+        log_probs = [[],[]]
+        values = [[],[]]
+        rewards = [[],[]]
+        masks = [[],[]]
         
         # --- Train ---
         for _ in range(max_steps_per_episode):
@@ -103,17 +101,17 @@ for epoch in range(epochs):
 
                     adjusted_action = action + 1
                     actions.append(adjusted_action)
-                    log_probs.append(log_prob.unsqueeze(0))
+                    log_probs[team].append(log_prob.unsqueeze(0))
 
                 # Update the critic based on the actions of all agents
                 critic_state = env.get_critic_state(actions)
                 value = critic_network(torch.tensor(critic_state))
-                values.append(value.unsqueeze(0))
+                values[team].append(value.unsqueeze(0))
 
                 # Take a step in the environment with all actions
                 _, reward, done, _, _ = env.step(actions)
-                rewards.append(torch.tensor([reward], dtype=torch.float).unsqueeze(0))
-                masks.append(torch.tensor([1-done], dtype=torch.float).unsqueeze(0))
+                rewards[team].append(torch.tensor([reward], dtype=torch.float).unsqueeze(0))
+                masks[team].append(torch.tensor([1-done], dtype=torch.float).unsqueeze(0))
                 # Sum rewards for logging
                 if reward != 0:
                     total_rewards[team] += reward
@@ -123,49 +121,45 @@ for epoch in range(epochs):
             if done:
                 break
 
+        for team in range(2):
+            # --- Learn ---
+            team_log_probs = torch.cat(log_probs[team])
+            team_values = torch.cat(values[team])
+            team_rewards = torch.cat(rewards[team])
+            team_masks = torch.cat(masks[team])
 
-        if not done and len(rewards) >= 2:
-            rewards[-1] = torch.tensor([-1.0], dtype=torch.float).unsqueeze(0)
-            rewards[-2] = torch.tensor([-1.0], dtype=torch.float).unsqueeze(0)
-                
-        # --- Learn ---
-        log_probs = torch.cat(log_probs)
-        values = torch.cat(values)
-        rewards = torch.cat(rewards)
-        masks = torch.cat(masks)
+            returns = torch.zeros_like(team_rewards)
+            R = 0
+            for step in reversed(range(len(team_rewards))):
+                R = team_rewards[step] + discount_factor * R * team_masks[step]
+                returns[step] = R
 
-        returns = torch.zeros_like(rewards)
-        R = 0
-        for step in reversed(range(len(rewards))):
-            R = rewards[step] + discount_factor * R * masks[step]
-            returns[step] = R
+            # Compute the value loss
+            value_loss = (returns - team_values).pow(2).mean()
+            total_loss[team] += value_loss.item()
 
-        # Compute the value loss
-        value_loss = (returns - values).pow(2).mean()
+            # Optimize the critic network
+            critic_optimizer.zero_grad()
+            value_loss.backward()
+            critic_optimizer.step()
 
-        # Optimize the critic network
-        critic_optimizer.zero_grad()
-        value_loss.backward()
-        critic_optimizer.step()
+            # Compute the policy loss
+            advantages = returns - team_values.detach()
+            policy_loss = -team_log_probs * advantages
+            policy_loss = policy_loss.mean()
 
-        # Compute the policy loss
-        advantages = returns - values.detach()
-        policy_loss = -log_probs * advantages
-        policy_loss = policy_loss.mean()
-
-        # Optimize the actor network
-        actor_optimizer.zero_grad()
-        policy_loss.backward()
-        actor_optimizer.step()
+            # Optimize the actor network
+            actor_optimizer.zero_grad()
+            policy_loss.backward()
+            actor_optimizer.step()
         
 
     # Print the episode number and total rewards
     elapsed_time = round((time.time() - start_time)/60,3)
     total_rewards = [round(r / num_episodes,3) for r in total_rewards]
     average_steps = total_steps // num_episodes
-    print(f"Epoch {epoch}: Total Average Rewards = {total_rewards} Average steps = {average_steps} Elapsed Time = {elapsed_time} minutes")
-    start_time = time.time()
-    total_rewards = [0.0] * 2
+    total_loss = [round(l / num_episodes,3) for l in total_loss]
+    print(f"Epoch {epoch}: Rewards = {total_rewards} Loss = {total_loss} Steps = {average_steps} Elapsed Time = {elapsed_time} minutes")
 
     torch.save(actor_network.state_dict(), f"{training_dir}actor_network.pth")
     torch.save(critic_network.state_dict(), f"{training_dir}critic_network.pth")
