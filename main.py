@@ -55,7 +55,7 @@ class Critic(nn.Module):
 
 # Params
 epochs = 1000
-num_episodes = 10
+num_episodes = 100
 max_steps_per_episode = 512
 discount_factor = 0.999
 
