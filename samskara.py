@@ -15,6 +15,7 @@ class Samskara(gym.Env):
         # rewards
         self.REWARD_FOR_WIN = 1
         self.REWARD_FOR_KILL = 0.2
+        self.REWARD_FOR_DAMAGE = 0.05
 
         # Define the dimensions of the field
         self.num_cells = 61
@@ -28,7 +29,7 @@ class Samskara(gym.Env):
         self.agents = []
         
         # Render
-        self.window_size = 768
+        self.window_size = 1024
         self.window = None
         self.clock = None
         self.last_actions = []
@@ -379,6 +380,7 @@ class Samskara(gym.Env):
                 # ---- ATTACK ----
                 elif act >= 7 and next_cell.data != None and next_cell.data.team != current_cell.data.team:
                         next_cell.data.health -= agent.power
+                        reward += self.REWARD_FOR_DAMAGE
                         # dead
                         if next_cell.data.health <= 0.001:
                             # remove from agent list
@@ -395,6 +397,31 @@ class Samskara(gym.Env):
             
                     
         return self.empty_actor_state, reward, done, False, {}
+    
+    def compute_winner(self):
+        alive = [0,0]
+        hp = [0,0]
+
+        for team in range(2):
+            for agent in self.agents[team]:
+                alive[team] += 1
+                hp[team] += agent.health
+
+
+        # print(f"hp {hp} alive {alive}")
+        
+        if alive[0] > alive[1]:
+            return 0
+        elif alive[1] > alive[0]:
+            return 1
+        
+        if hp[0] > hp[1]:
+            return 0
+        elif hp[1] > hp[0]:
+            return 1
+        
+        return -1
+
 
 # Register the environment with Gym
 gym.envs.register(

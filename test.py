@@ -42,7 +42,7 @@ while True:
     env.render()
     done = False
     while not done:
-        for team in range(2):
+        for team in range(1):
             actions = []
             for agent in range(env.team_len(team)):
                 env.set_active(agent, team)
