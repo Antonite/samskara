@@ -381,7 +381,15 @@ class Samskara(gym.Env):
                                     reward = self.REWARD_FOR_KILL
                                 break
                         next_cell.data = None
-                    
+        else:
+            # Punish actions outside playable area
+            reward = -0.002
+        
+        # Punish attacking empty space
+        if act >= 7 and reward == 0:
+            reward = -0.002
+
+
         return self.empty_actor_state, reward, done, False, {}
     
     

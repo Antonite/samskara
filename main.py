@@ -81,14 +81,14 @@ class Critic(nn.Module):
 # Params
 epochs = 1000
 num_episodes = 10
-max_steps_per_episode = 1024
+max_steps_per_episode = 2048
 discount_factor = 0.99
 
 # Create actor and critic networks
 actor_network = Actor(num_input_channels_actor, num_actions)
 critic_network = Critic(num_input_channels_actor, num_actions)
-# actor_network.load_state_dict(torch.load(f"{training_dir}actor_network.pth"))
-# critic_network.load_state_dict(torch.load(f"{training_dir}critic_network.pth"))
+actor_network.load_state_dict(torch.load(f"{training_dir}actor_network.pth"))
+critic_network.load_state_dict(torch.load(f"{training_dir}critic_network.pth"))
 
 # Optimizers
 actor_optimizer = torch.optim.Adam(actor_network.parameters(), lr=0.0001)
@@ -175,7 +175,7 @@ for epoch in range(epochs):
 
         if not done:
             print("stuck - skipping")
-            break
+            continue
         # winner = env.compute_winner()
         # if winner == -1:
         #     rewards[0][-1] = torch.tensor([-0.2], dtype=torch.float).unsqueeze(0)
