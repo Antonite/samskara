@@ -177,6 +177,6 @@ class SamskaraEnv(gym.Env):
                 cell_idx += 1
 
         pygame.display.flip()
-        self.clock.tick(30)
+        self.clock.tick(10)
 
 
