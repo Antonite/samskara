@@ -4,3 +4,5 @@ __pycache__/
 .vscode/
 ppo_samskara.zip
 ppo_samskara/
+checkpoints/
+logs_samskara/

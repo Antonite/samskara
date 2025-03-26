@@ -1,13 +1,23 @@
-import gymnasium as gym
+# test.py
+import torch
 from stable_baselines3 import PPO
 from samskara import SamskaraEnv
 
-env = SamskaraEnv(num_fighters_per_team=3)
-model = PPO.load("ppo_samskara.zip")
+if __name__ == "__main__":
+    # Create a single environment instance
+    env = SamskaraEnv(num_fighters_per_team=3)
 
-obs, _ = env.reset()
-done = False
-while not done:
-    action, _states = model.predict(obs)
-    obs, rewards, done, truncated, info = env.step(action)
-    env.render()
+    # Load the trained CNN model (make sure the filename matches your save)
+    model = PPO.load("./checkpoints/ppo_samskara_1200000_steps")
+
+    obs, _ = env.reset()
+    done = False
+    truncated = False
+
+    while not done and not truncated:
+        # Predict using the loaded model
+        action, _states = model.predict(obs, deterministic=True)
+        obs, reward, done, truncated, info = env.step(action)
+        env.render()
+    
+    env.close()
