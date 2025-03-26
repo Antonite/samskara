@@ -13,10 +13,9 @@ class Profession():
 PROFESSIONS = {}
 PROFESSIONS[Type.FIGHTER] = Profession(20,100,1,1)
 
-AGENT_FIELDS = 7
+AGENT_FIELDS = 6
 # MAX_TYPES = len(Type) - 1
 MAX_HEALTH = 200
-MAX_SPEED = 2
 MAX_POWER = 100
 MAX_ROW = 8
 MAX_COL = 8
@@ -24,7 +23,7 @@ MAX_RANGE = 5
 
 
 class Agent:
-  def __init__(self, id, cell_id, type, team, health, power, speed, range):
+  def __init__(self, id, cell_id, type, team, health, power, range):
     # internal
     self.cell_id = cell_id
     self.id = id
@@ -34,13 +33,12 @@ class Agent:
     self.team = team
     self.health = health
     self.power = power
-    self.speed = speed
     self.range = range
     self.is_active = False
 
   def normalize(self, active_team):
     t = 0 if active_team == self.team else 1
-    return float(self.is_active), self.type.value, t, self.health / MAX_HEALTH, self.power / MAX_POWER, self.speed / MAX_SPEED, self.range / MAX_RANGE
+    return float(self.is_active), self.type.value, t, self.health / MAX_HEALTH, self.power / MAX_POWER, self.range / MAX_RANGE
 
 
   

@@ -8,6 +8,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.callbacks import CheckpointCallback
 import multiprocessing
+from sb3_contrib import MaskablePPO
 
 from samskara import SamskaraEnv
 
@@ -46,10 +47,9 @@ def make_env():
     return _init
 
 if __name__ == "__main__":
-    # On Windows or if using spawn, you typically need:
+    # windows only
     multiprocessing.freeze_support()
     multiprocessing.set_start_method('spawn', force=True)
-    # but only call these if needed. Some systems (Linux fork) won't require them.
 
     NUM_ENV = 4  # Adjust based on your CPU/GPU resources
     env = SubprocVecEnv([make_env() for _ in range(NUM_ENV)])
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         name_prefix="ppo_samskara"
     )
 
-    model = PPO(
+    model = MaskablePPO(
         "CnnPolicy",
         env,
         policy_kwargs=policy_kwargs,
@@ -79,6 +79,6 @@ if __name__ == "__main__":
     )
 
     # tb_log_name: subfolder name inside "logs_samskara"
-    model.learn(total_timesteps=5_000_000, tb_log_name="PPO_Samskara", callback=checkpoint_callback)
+    model.learn(total_timesteps=5_000_000, tb_log_name="PPO_Samskara", callback=checkpoint_callback, use_masking=True)
     model.save("ppo_samskara_cnn")
 
